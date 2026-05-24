@@ -1,6 +1,6 @@
 [workspace]
 name = "black-and-white-headtracking"
-version = "0.0.0"
+version = "0.1.0"
 description = "Head tracking mod for Black & White (2001) using OpenTrack UDP and the cameraunlock-core shared library"
 channels = ["conda-forge"]
 platforms = ["win-64"]
