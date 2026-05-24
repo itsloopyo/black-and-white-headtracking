@@ -1,0 +1,23 @@
+[workspace]
+name = "black-and-white-headtracking"
+version = "0.0.0"
+description = "Head tracking mod for Black & White (2001) using OpenTrack UDP and the cameraunlock-core shared library"
+channels = ["conda-forge"]
+platforms = ["win-64"]
+
+[tasks]
+# B&W is a 32-bit DirectX 7 game - everything is built x86.
+sync          = { cmd = "git submodule update --remote cameraunlock-core" }
+setup = { cmd = "powershell -Command \"if (-not (Test-Path 'build/CMakeCache.txt')) { cmake -B build -G 'Visual Studio 17 2022' -A Win32 } else { Write-Host 'Build already configured, skipping setup' -ForegroundColor Yellow }\"" }
+build         = { cmd = "cmake --build build --config Debug",   depends-on = ["setup"] }
+build-release = { cmd = "cmake --build build --config Release", depends-on = ["setup"] }
+install       = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 Release", depends-on = ["build-release"] }
+uninstall     = "scripts\\uninstall.cmd"
+package       = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["build-release"] }
+release       = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/release.ps1" }
+update-deps   = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/update-deps.ps1" }
+clean         = { cmd = "powershell -Command \"if (Test-Path 'build') { Remove-Item 'build' -Recurse -Force }; Write-Host 'Build artifacts cleaned' -ForegroundColor Green\"" }
+clean-all     = { cmd = "powershell -Command \"if (Test-Path 'build') { Remove-Item 'build' -Recurse -Force }; if (Test-Path 'release') { Remove-Item 'release' -Recurse -Force }\"" }
+ghidra-script = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/ghidra-headless.ps1" }
+
+[dependencies]

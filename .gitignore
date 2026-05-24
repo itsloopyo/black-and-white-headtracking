@@ -1,0 +1,34 @@
+# Build output
+build/
+bin/
+obj/
+dist/
+target/
+*.user
+*.suo
+.vs/
+.vscode/
+.idea/
+
+# Release artifacts
+release/
+.headtracking-state.json
+
+# Game DLLs / vendored libs
+libs/
+
+# Pixi
+.pixi/
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Nexus listing copy (not tracked)
+NEXUS_MODS.md
+
+# Agent tooling (project rule: never tracked)
+.claude/
+.lab/
+AGENTS.md
+CLAUDE.md

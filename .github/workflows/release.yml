@@ -1,0 +1,113 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and Publish Release
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - name: Setup Visual Studio environment
+        uses: microsoft/setup-msbuild@v3
+
+      - name: Extract version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          if ($tag -notmatch '^v(\d+\.\d+\.\d+)$') {
+            Write-Host "::error::Tag '$tag' does not match v<major>.<minor>.<patch>"
+            exit 1
+          }
+          $version = $matches[1]
+          Write-Host "Tag: $tag"
+          Write-Host "Version: $version"
+          "tag=$tag"         | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Validate version matches src/version.h
+        shell: pwsh
+        run: |
+          $expected = "${{ steps.version.outputs.version }}"
+          $match = Select-String -Path 'src/version.h' -Pattern 'HEADTRACKING_VERSION_STRING\s+"([^"]+)"'
+          if (-not $match) {
+            Write-Host "::error::HEADTRACKING_VERSION_STRING not found in src/version.h"
+            exit 1
+          }
+          $actual = $match.Matches[0].Groups[1].Value
+          if ($actual -ne $expected) {
+            Write-Host "::error::Version mismatch: tag=$expected, src/version.h=$actual"
+            exit 1
+          }
+          Write-Host "Version match confirmed: $actual" -ForegroundColor Green
+
+      - name: Configure CMake (Win32)
+        shell: pwsh
+        run: |
+          cmake -B build -G "Visual Studio 17 2022" -A Win32
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error::CMake configuration failed"; exit 1 }
+
+      - name: Build Release
+        shell: pwsh
+        run: |
+          cmake --build build --config Release
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error::Release build failed"; exit 1 }
+
+      - name: Package release ZIPs
+        shell: pwsh
+        run: |
+          Write-Host "Packaging release ZIPs..." -ForegroundColor Cyan
+          powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error::Packaging failed"; exit 1 }
+
+      - name: Generate release notes
+        shell: pwsh
+        run: |
+          $script = "cameraunlock-core/scripts/generate-release-notes.ps1"
+          if (-not (Test-Path $script)) {
+            Write-Host "::error::$script not found"
+            exit 1
+          }
+          & $script `
+            -Version "${{ steps.version.outputs.version }}" `
+            -OutputFile "release-notes.txt" `
+            -ArtifactPaths @('src/', 'cameraunlock-core/', 'scripts/install.cmd', 'scripts/uninstall.cmd')
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error::Release notes generation failed"; exit 1 }
+
+      - name: Find release ZIPs
+        id: find_zips
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path release -Filter '*-installer.zip' -File | Select-Object -First 1
+          $nexus     = Get-ChildItem -Path release -Filter '*-nexus.zip'     -File | Select-Object -First 1
+          if (-not $installer) { Write-Host "::error::Installer ZIP not found in release/"; exit 1 }
+          if (-not $nexus)     { Write-Host "::error::Nexus ZIP not found in release/";     exit 1 }
+          Write-Host "Installer: $($installer.FullName)"
+          Write-Host "Nexus:     $($nexus.FullName)"
+          "installer=$($installer.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "nexus=$($nexus.FullName)"         | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" `
+            --title "BlackAndWhiteHeadTracking ${{ steps.version.outputs.tag }}" `
+            --notes-file release-notes.txt `
+            "${{ steps.find_zips.outputs.installer }}" `
+            "${{ steps.find_zips.outputs.nexus }}"
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error::gh release create failed"; exit 1 }
