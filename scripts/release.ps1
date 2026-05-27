@@ -5,6 +5,16 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+if (-not $Version) {
+    Write-Error "Usage: pixi run release <major|minor|patch|nightly|X.Y.Z>"
+    exit 1
+}
+
+if ($Version -eq 'nightly') {
+    & (Join-Path $PSScriptRoot 'release-nightly.ps1')
+    exit $LASTEXITCODE
+}
+
 $repoRoot = Resolve-Path "$PSScriptRoot\.."
 Set-Location $repoRoot
 
