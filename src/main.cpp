@@ -230,6 +230,7 @@ DWORD WINAPI CenterWindowThread(LPVOID) {
 }  // namespace
 
 static DWORD WINAPI BootstrapThread(LPVOID) {
+    headtracking::OpenLogFile();
     HT_LOG("[main] HeadTracking %s loaded into pid %lu",
            HEADTRACKING_VERSION_STRING, GetCurrentProcessId());
 

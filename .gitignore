@@ -32,3 +32,6 @@ NEXUS_MODS.md
 .lab/
 AGENTS.md
 CLAUDE.md
+.mcp.json
+.skills/
+skills/

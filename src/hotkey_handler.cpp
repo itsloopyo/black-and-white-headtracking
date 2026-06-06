@@ -2,68 +2,51 @@
 #include "plugin.h"
 #include "debug_log.h"
 
-#ifdef _WIN32
-#include <Windows.h>
-#endif
+#include "cameraunlock/input/chord_hotkeys.h"
 
 namespace headtracking {
 
 namespace {
+// Ctrl+Shift chord letters per the shared T/Y/U/G/H/J cluster convention:
+// T = recenter, Y = toggle tracking, G = mode cycle, H = yaw mode.
 constexpr int kVkT = 0x54;
 constexpr int kVkY = 0x59;
 constexpr int kVkG = 0x47;
 constexpr int kVkH = 0x48;
-
-bool CtrlShiftHeld() {
-#ifdef _WIN32
-    return (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0
-        && (GetAsyncKeyState(VK_SHIFT)   & 0x8000) != 0;
-#else
-    return false;
-#endif
-}
 }  // namespace
 
 void HotkeyHandler::Start(Plugin& plugin, int recenter_vk, int toggle_vk, int yaw_mode_vk,
                           int mode_cycle_vk) {
-    m_poller.SetRecenterKey(recenter_vk, [&plugin]() {
+    using cameraunlock::input::ChordGuarded;
+
+    const auto recenter = [&plugin]() {
         plugin.Recenter();
         HT_LOG("[hotkey] recenter");
-    });
-    m_poller.SetToggleKey(toggle_vk, [&plugin]() {
+    };
+    const auto toggle = [&plugin]() {
         plugin.ToggleEnabled();
         HT_LOG("[hotkey] toggle -> %s", plugin.IsEnabled() ? "on" : "off");
-    });
-    m_poller.AddHotkey(yaw_mode_vk, [&plugin]() {
+    };
+    const auto yawMode = [&plugin]() {
         plugin.ToggleYawMode();
         HT_LOG("[hotkey] yaw mode -> %s",
                plugin.IsWorldSpaceYaw() ? "world-space" : "camera-local");
-    });
-    m_poller.AddHotkey(mode_cycle_vk, [&plugin]() {
+    };
+    const auto modeCycle = [&plugin]() {
         plugin.CycleTrackingMode();
         HT_LOG("[hotkey] mode cycle -> %s", plugin.TrackingModeName());
-    });
-    m_poller.AddHotkey(kVkT, [&plugin]() {
-        if (!CtrlShiftHeld()) return;
-        plugin.Recenter();
-        HT_LOG("[hotkey] recenter (chord)");
-    });
-    m_poller.AddHotkey(kVkY, [&plugin]() {
-        if (!CtrlShiftHeld()) return;
-        plugin.ToggleEnabled();
-        HT_LOG("[hotkey] toggle (chord) -> %s", plugin.IsEnabled() ? "on" : "off");
-    });
-    m_poller.AddHotkey(kVkH, [&plugin]() {
-        if (!CtrlShiftHeld()) return;
-        plugin.ToggleYawMode();
-        HT_LOG("[hotkey] yaw mode (chord) -> %s",
-               plugin.IsWorldSpaceYaw() ? "world-space" : "camera-local");
-    });
-    m_poller.AddHotkey(kVkG, [&plugin]() {
-        if (!CtrlShiftHeld()) return;
-        plugin.CycleTrackingMode();
-        HT_LOG("[hotkey] mode cycle (chord) -> %s", plugin.TrackingModeName());
-    });
+    };
+
+    m_poller.SetRecenterKey(recenter_vk, recenter);
+    m_poller.SetToggleKey(toggle_vk, toggle);
+    m_poller.AddHotkey(yaw_mode_vk, yawMode);
+    m_poller.AddHotkey(mode_cycle_vk, modeCycle);
+
+    m_poller.AddHotkey(kVkT, ChordGuarded(recenter));
+    m_poller.AddHotkey(kVkY, ChordGuarded(toggle));
+    m_poller.AddHotkey(kVkH, ChordGuarded(yawMode));
+    m_poller.AddHotkey(kVkG, ChordGuarded(modeCycle));
+
     m_poller.Start(16);
 }
 

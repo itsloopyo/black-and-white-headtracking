@@ -5,16 +5,13 @@
 
 #include "config.h"
 #include "cameraunlock/protocol/udp_receiver.h"
-#include "cameraunlock/processing/tracking_processor.h"
-#include "cameraunlock/processing/position_processor.h"
+#include "cameraunlock/time/frame_clock.h"
+#include "cameraunlock/tracking/head_tracking_session.h"
 
 namespace headtracking {
 
 class CameraHook;
 class HotkeyHandler;
-
-// What head motion drives the camera. Cycled at runtime (Page Up).
-enum class TrackingMode { SixDof = 0, RotationOnly = 1, PositionOnly = 2 };
 
 class Plugin {
 public:
@@ -31,9 +28,6 @@ public:
     bool IsWorldSpaceYaw() const { return m_worldSpaceYaw.load(); }
     void ToggleYawMode();
 
-    TrackingMode GetTrackingMode() const {
-        return static_cast<TrackingMode>(m_trackingMode.load());
-    }
     void CycleTrackingMode();
     const char* TrackingModeName() const;
 
@@ -61,17 +55,13 @@ private:
     Config m_config;
     std::atomic<bool> m_enabled{false};
     std::atomic<bool> m_worldSpaceYaw{true};
-    std::atomic<int>  m_trackingMode{static_cast<int>(TrackingMode::SixDof)};
-    std::atomic<bool> m_recenterRequested{false};
 
     cameraunlock::UdpReceiver m_receiver;
-    cameraunlock::TrackingProcessor  m_processor;
-    cameraunlock::PositionProcessor  m_posProcessor;
+    cameraunlock::HeadTrackingSession<cameraunlock::UdpReceiver> m_session{m_receiver};
+    cameraunlock::time::FrameClock m_frameClock;
 
     std::unique_ptr<CameraHook>    m_cameraHook;
     std::unique_ptr<HotkeyHandler> m_hotkeys;
-
-    int64_t m_lastPollTimeUs = 0;
 
     // Auto-locked zoom reference (focal distance) when pos_zoom_reference is 0.
     float m_zoomRef = 0.0f;

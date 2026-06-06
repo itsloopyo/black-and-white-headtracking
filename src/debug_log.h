@@ -1,58 +1,34 @@
 #pragma once
 
 #include <Windows.h>
-
-#include <atomic>
-#include <cstdio>
-#include <cstdarg>
-#include <mutex>
 #include <string>
+
+#include "cameraunlock/logging/file_log.h"
 
 namespace headtracking {
 
-// Pre-config bootstrap logs (DllMain, pre-Initialize) write through; once
-// Config::log_to_file is loaded, Plugin::Initialize calls SetFileLogging
-// to honour the user's preference.
-inline std::atomic<bool>& FileLoggingFlag() {
-    static std::atomic<bool> enabled{true};
-    return enabled;
+// Opens HeadTracking_debug.log next to the game EXE (truncated each launch).
+// Called once from the bootstrap thread before the first HT_LOG so pre-config
+// lines are captured; Plugin::Initialize then calls SetFileLogging to honour
+// the user's preference.
+inline void OpenLogFile() {
+    wchar_t buf[MAX_PATH] = {};
+    // GetModuleFileNameW does not guarantee null-termination on truncation, so
+    // bound the path by the returned length instead of reading the raw buffer.
+    const DWORD len = GetModuleFileNameW(nullptr, buf, MAX_PATH);
+    std::wstring dir;
+    if (len > 0 && len < MAX_PATH) {
+        std::wstring exe(buf, len);
+        const auto slash = exe.find_last_of(L"\\/");
+        if (slash != std::wstring::npos) dir = exe.substr(0, slash + 1);
+    }
+    cameraunlock::logging::Open(dir + L"HeadTracking_debug.log");
 }
 
 inline void SetFileLogging(bool enabled) {
-    FileLoggingFlag().store(enabled, std::memory_order_release);
-}
-
-inline const char* LogPath() {
-    static std::string path = []() {
-        char buf[1024] = {};
-        // GetModuleFileNameA does not guarantee null-termination on truncation
-        // (it returns the buffer size and sets ERROR_INSUFFICIENT_BUFFER), so
-        // construct the string from the returned length, not the raw buffer.
-        DWORD len = GetModuleFileNameA(nullptr, buf, sizeof(buf));
-        if (len == 0 || len >= sizeof(buf)) return std::string("HeadTracking_debug.log");
-        std::string p(buf, len);
-        auto slash = p.find_last_of("\\/");
-        if (slash != std::string::npos) p = p.substr(0, slash + 1);
-        else p.clear();
-        return p + "HeadTracking_debug.log";
-    }();
-    return path.c_str();
-}
-
-inline void Log(const char* fmt, ...) {
-    if (!FileLoggingFlag().load(std::memory_order_acquire)) return;
-    static std::mutex m;
-    std::lock_guard<std::mutex> g(m);
-    FILE* f = std::fopen(LogPath(), "a");
-    if (!f) return;
-    va_list ap;
-    va_start(ap, fmt);
-    std::vfprintf(f, fmt, ap);
-    va_end(ap);
-    std::fputc('\n', f);
-    std::fclose(f);
+    if (!enabled) cameraunlock::logging::Close();
 }
 
 }  // namespace headtracking
 
-#define HT_LOG(...) ::headtracking::Log(__VA_ARGS__)
+#define HT_LOG(...) ::cameraunlock::logging::Line(__VA_ARGS__)

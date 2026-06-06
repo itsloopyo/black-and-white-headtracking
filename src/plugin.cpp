@@ -1,8 +1,5 @@
 #include "plugin.h"
 
-#include <Windows.h>
-#include <chrono>
-
 #include "camera_hook.h"
 #include "hotkey_handler.h"
 #include "debug_log.h"
@@ -12,13 +9,6 @@ namespace headtracking {
 namespace {
 constexpr float kPi = 3.14159265358979323846f;
 constexpr float kDegToRad = kPi / 180.0f;
-
-// First-call seed and out-of-range fallback for the processor's dt input.
-// 1/60s is a reasonable assumption before any inter-frame interval is known.
-constexpr float kFallbackDtSeconds = 1.0f / 60.0f;
-// Discard implausible intervals (clock jumps, debugger pauses, first frame
-// after a long stall) and feed the processor the seed instead.
-constexpr float kMaxPlausibleDtSeconds = 1.0f;
 
 void ApplyRotationConfig(cameraunlock::TrackingProcessor& processor, const Config& c) {
     cameraunlock::SensitivitySettings s;
@@ -73,11 +63,12 @@ bool Plugin::Initialize() {
     SetFileLogging(m_config.log_to_file);
     m_enabled.store(m_config.enabled_on_startup);
     m_worldSpaceYaw.store(m_config.world_space_yaw);
-    m_trackingMode.store(static_cast<int>(
-        m_config.pos_enabled ? TrackingMode::SixDof : TrackingMode::RotationOnly));
+    m_session.SetMode(m_config.pos_enabled
+                          ? cameraunlock::TrackingMode::RotationAndPosition
+                          : cameraunlock::TrackingMode::RotationOnly);
 
-    ApplyRotationConfig(m_processor, m_config);
-    ApplyPositionConfig(m_posProcessor, m_config);
+    ApplyRotationConfig(m_session.GetProcessor(), m_config);
+    ApplyPositionConfig(m_session.GetPositionProcessor(), m_config);
 
     m_receiver.SetLog([](const std::string& msg) {
         HT_LOG("[receiver] %s", msg.c_str());
@@ -108,7 +99,7 @@ void Plugin::Shutdown() {
 }
 
 void Plugin::Recenter() {
-    m_recenterRequested.store(true);
+    m_session.Recenter();
 }
 
 void Plugin::ToggleYawMode() {
@@ -118,16 +109,15 @@ void Plugin::ToggleYawMode() {
 }
 
 void Plugin::CycleTrackingMode() {
-    const int next = (m_trackingMode.load() + 1) % 3;
-    m_trackingMode.store(next);
+    m_session.CycleMode();
     HT_LOG("[plugin] tracking mode -> %s", TrackingModeName());
 }
 
 const char* Plugin::TrackingModeName() const {
-    switch (GetTrackingMode()) {
-        case TrackingMode::SixDof:       return "6DOF (rotation + position)";
-        case TrackingMode::RotationOnly: return "rotation only";
-        case TrackingMode::PositionOnly: return "position only";
+    switch (m_session.GetMode()) {
+        case cameraunlock::TrackingMode::RotationAndPosition: return "6DOF (rotation + position)";
+        case cameraunlock::TrackingMode::RotationOnly:        return "rotation only";
+        case cameraunlock::TrackingMode::PositionOnly:        return "position only";
     }
     return "?";
 }
@@ -149,62 +139,25 @@ bool Plugin::GetCurrentRotationRadians(float& yaw, float& pitch, float& roll) {
         s_loggedConnected = true;
     }
 
-    if (m_recenterRequested.exchange(false)) {
-        m_receiver.Recenter();
-        m_processor.Reset();
-        // Recentre position too: the receiver stores no position offset, so the
-        // current raw head position becomes the processor's neutral point.
-        float cx = 0.0f, cy = 0.0f, cz = 0.0f;
-        if (m_receiver.GetPosition(cx, cy, cz)) {
-            m_posProcessor.SetCenter(cameraunlock::PositionData(cx, cy, cz));
-        }
-        m_posProcessor.ResetSmoothing();
-    }
+    const float dt = m_frameClock.Tick();
+    if (!m_session.Update(dt)) return false;
 
-    float ry = 0.0f, rp = 0.0f, rr = 0.0f;
-    if (!m_receiver.GetRotation(ry, rp, rr)) return false;
-
-    const auto now = std::chrono::steady_clock::now().time_since_epoch();
-    const int64_t now_us = std::chrono::duration_cast<std::chrono::microseconds>(now).count();
-    float dt = m_lastPollTimeUs == 0
-                 ? kFallbackDtSeconds
-                 : (now_us - m_lastPollTimeUs) / 1e6f;
-    m_lastPollTimeUs = now_us;
-    if (dt < 0.0f || dt > kMaxPlausibleDtSeconds) dt = kFallbackDtSeconds;
-
-    // Always process so the smoothed rotation state stays warm across mode
-    // switches; the mode only decides what we hand to the camera.
-    auto pose = m_processor.Process(ry, rp, rr, dt);
-    const TrackingMode mode = GetTrackingMode();
-    const bool rot_active = (mode != TrackingMode::PositionOnly);
-    const bool pos_active = (mode != TrackingMode::RotationOnly);
-
-    if (rot_active) {
-        yaw   = pose.yaw   * kDegToRad;
-        pitch = pose.pitch * kDegToRad;
-        roll  = pose.roll  * kDegToRad;
-    } else {
-        yaw = pitch = roll = 0.0f;
-    }
+    float yaw_deg = 0.0f, pitch_deg = 0.0f, roll_deg = 0.0f;
+    m_session.GetRotation(yaw_deg, pitch_deg, roll_deg);
+    yaw   = yaw_deg   * kDegToRad;
+    pitch = pitch_deg * kDegToRad;
+    roll  = roll_deg  * kDegToRad;
     m_cachedYaw.store(yaw,   std::memory_order_release);
     m_cachedPitch.store(pitch, std::memory_order_release);
     m_cachedRoll.store(roll,  std::memory_order_release);
     m_cachedValid.store(true, std::memory_order_release);
 
-    // Positional tracking. Run the raw head position (mm -> m) through the
-    // shared position pipeline (recentre, pivot-compensate, sensitivity,
-    // smooth, clamp), using the smoothed pre-sensitivity rotation so the
-    // pivot-compensation matches the orientation actually shown. The result
-    // is a camera-local displacement in metres; scale it to engine units.
+    // Positional tracking. The session has run the raw head position through
+    // the shared pipeline (recentre, sensitivity, smooth, clamp); the result
+    // is a camera-local displacement in metres. Scale it to engine units.
     // The camera hook applies it as the final shift on the render matrix.
-    float px = 0.0f, py = 0.0f, pz = 0.0f;
-    if (pos_active && m_receiver.GetPosition(px, py, pz)) {
-        float syaw = 0.0f, spitch = 0.0f, sroll = 0.0f;
-        m_processor.GetSmoothedRotation(syaw, spitch, sroll);
-        const auto rotq = cameraunlock::math::Quat4::FromYawPitchRoll(syaw, spitch, sroll);
-        const cameraunlock::PositionData raw(px, py, pz);  // OpenTrack sends metres
-        const cameraunlock::math::Vec3 off = m_posProcessor.Process(raw, rotq, dt);
-
+    float ox = 0.0f, oy = 0.0f, oz = 0.0f;
+    if (m_session.GetPositionOffset(ox, oy, oz)) {
         // Scale by zoom so the on-screen effect is constant: a camera move
         // produces screen parallax inversely with the distance to what you're
         // looking at, so the world offset must scale with that focal distance.
@@ -227,23 +180,27 @@ bool Plugin::GetCurrentRotationRadians(float& yaw, float& pitch, float& roll) {
             }
         }
         const float scale = m_config.pos_world_scale * zoom;
-        const float wx = off.x * scale;
-        const float wy = off.y * scale;
-        const float wz = off.z * scale;
+        const float wx = ox * scale;
+        const float wy = oy * scale;
+        const float wz = oz * scale;
         m_cachedPosX.store(wx, std::memory_order_release);
         m_cachedPosY.store(wy, std::memory_order_release);
         m_cachedPosZ.store(wz, std::memory_order_release);
         m_cachedPosValid.store(true, std::memory_order_release);
 
-        // Throttled (~1/s) calibration trace: raw tracker mm, clamped metres,
-        // and the engine-unit offset actually handed to the camera hook. Use
-        // this to size WorldScale and confirm each axis moves the right way.
-        static int64_t s_lastPosLogUs = 0;
-        if (now_us - s_lastPosLogUs > 1'000'000) {
-            s_lastPosLogUs = now_us;
+        // Throttled (~1/s) calibration trace: raw tracker metres, clamped
+        // metres, and the engine-unit offset actually handed to the camera
+        // hook. Use this to size WorldScale and confirm each axis moves the
+        // right way.
+        static float s_posLogAccum = 0.0f;
+        s_posLogAccum += dt;
+        if (s_posLogAccum >= 1.0f) {
+            s_posLogAccum = 0.0f;
+            float rx = 0.0f, ry = 0.0f, rz = 0.0f;
+            m_receiver.GetPosition(rx, ry, rz);
             HT_LOG("[pos] raw_m=(%.3f,%.3f,%.3f) clamped_m=(%.3f,%.3f,%.3f) "
                    "world=(%.2f,%.2f,%.2f) scale=%.1f focal=%.1f zoom=%.2f",
-                   px, py, pz, off.x, off.y, off.z, wx, wy, wz,
+                   rx, ry, rz, ox, oy, oz, wx, wy, wz,
                    m_config.pos_world_scale, focal, zoom);
         }
     } else {
