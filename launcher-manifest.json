@@ -1,18 +1,26 @@
 {
-  "schema_version": 2,
-  "mod_info": {
-    "name": "BlackAndWhiteHeadTracking",
-    "version": "0.1.0",
-    "game_id": "black-and-white"
-  },
-  "strategy": "Shim",
-  "delivery_mode": "manifest",
+    "schema_version":  2,
+    "mod_info":  {
+                     "name":  "BlackAndWhiteHeadTracking",
+                     "version":  "0.1.1",
+                     "game_id":  "black-and-white"
+                 },
+    "strategy":  "Shim",
+    "delivery_mode":  "manifest",
+    "files":  [
+                  {
+                      "source":  "plugins/HeadTracking.dll",
+                      "target":  "HeadTracking.dll"
+                  },
+                  {
+                      "source":  "plugins/bw-headtracking-launcher.exe",
+                      "target":  "bw-headtracking-launcher.exe"
+                  }
+              ],
+    "runtime_requirements":  [
 
-  "files": [
-    { "source": "plugins/HeadTracking.dll", "target": "HeadTracking.dll" },
-    { "source": "plugins/bw-headtracking-launcher.exe", "target": "bw-headtracking-launcher.exe" }
-  ],
+                             ],
+    "dependencies":  [
 
-  "runtime_requirements": [],
-  "dependencies": []
+                     ]
 }
