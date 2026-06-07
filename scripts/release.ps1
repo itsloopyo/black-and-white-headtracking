@@ -64,6 +64,15 @@ $cmake = Get-Content $cmakePath -Raw
 $cmake = $cmake -replace '(project\([^)]*?VERSION\s+)\d+\.\d+\.\d+', "`${1}$newVersion"
 Set-Content -Path $cmakePath -Value $cmake -NoNewline
 
+# Keep launcher-manifest.json version in sync (canonical: version.h; the
+# manifest lopari reads mirrors it). Only mod_info.version moves.
+$manifestPath = Join-Path $repoRoot 'launcher-manifest.json'
+$manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+$manifest.mod_info.version = $newVersion
+$manifestJson = $manifest | ConvertTo-Json -Depth 10
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($manifestPath, $manifestJson, $utf8NoBom)
+
 # Build
 Write-Host "Building release..." -ForegroundColor Cyan
 & pixi run build-release
@@ -74,7 +83,7 @@ $changelogPath = Join-Path $repoRoot 'CHANGELOG.md'
 New-ChangelogFromCommits -ChangelogPath $changelogPath -Version $newVersion | Out-Null
 
 # Commit version + changelog
-$committed = Invoke-VersionCommit -Version $newVersion -Files @($versionHeader, $pixiPath, $cmakePath, $changelogPath)
+$committed = Invoke-VersionCommit -Version $newVersion -Files @($versionHeader, $pixiPath, $cmakePath, $manifestPath, $changelogPath)
 if (-not $committed) { throw "No changes were staged for the release commit." }
 
 # Tag + push

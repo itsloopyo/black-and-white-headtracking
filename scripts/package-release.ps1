@@ -44,6 +44,16 @@ Copy-Item $iniSrc $pluginsDir
 Copy-Item (Join-Path $repoRoot 'scripts\install.cmd')   $installerStage
 Copy-Item (Join-Path $repoRoot 'scripts\uninstall.cmd') $installerStage
 
+# Stamp launcher-manifest.json (the contract lopari reads) into the ZIP root,
+# version-synced and BOM-free. serde_json tolerates a BOM but the contract is none.
+$manifestPath = Join-Path $repoRoot 'launcher-manifest.json'
+if (-not (Test-Path $manifestPath)) { throw "Missing launcher-manifest.json at repo root" }
+$manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+$manifest.mod_info.version = $version
+$manifestJson = $manifest | ConvertTo-Json -Depth 10
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText((Join-Path $installerStage 'launcher-manifest.json'), $manifestJson, $utf8NoBom)
+
 Import-Module (Join-Path $repoRoot 'cameraunlock-core\powershell\ReleaseWorkflow.psm1') -Force
 Copy-SharedBundle -StagingDir $installerStage -NoRefresh
 
