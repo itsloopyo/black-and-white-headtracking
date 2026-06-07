@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [string]$Version
+    [string]$Version,
+    [switch]$Force
 )
 
 $ErrorActionPreference = 'Stop'
@@ -35,7 +36,7 @@ Write-Host "Releasing v$newVersion (current: v$currentVersion)" -ForegroundColor
 $branch = (& git rev-parse --abbrev-ref HEAD).Trim()
 if ($branch -ne 'main') { throw "Must release from 'main' branch (currently on '$branch')." }
 
-if (-not (Test-CleanGitStatus)) { throw "Working tree is not clean. Commit or stash before releasing." }
+if (-not $Force -and -not (Test-CleanGitStatus)) { throw "Working tree is not clean. Commit or stash before releasing." }
 
 $tag = "v$newVersion"
 if (Test-GitTagExists -Tag $tag) { throw "Tag $tag already exists." }
@@ -69,7 +70,7 @@ Set-Content -Path $cmakePath -Value $cmake -NoNewline
 $manifestPath = Join-Path $repoRoot 'launcher-manifest.json'
 $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
 $manifest.mod_info.version = $newVersion
-$manifestJson = $manifest | ConvertTo-Json -Depth 10
+$manifestJson = ($manifest | ConvertTo-Json -Depth 10) -replace "`r`n", "`n"
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 [System.IO.File]::WriteAllText($manifestPath, $manifestJson, $utf8NoBom)
 
