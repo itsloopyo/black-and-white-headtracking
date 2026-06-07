@@ -2,7 +2,7 @@
     "schema_version":  2,
     "mod_info":  {
                      "name":  "BlackAndWhiteHeadTracking",
-                     "version":  "0.1.1",
+                     "version":  "0.1.2",
                      "game_id":  "black-and-white"
                  },
     "strategy":  "Shim",
