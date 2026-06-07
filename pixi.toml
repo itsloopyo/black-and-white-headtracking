@@ -22,3 +22,4 @@ clean-all     = { cmd = "powershell -Command \"if (Test-Path 'build') { Remove-I
 ghidra-script = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/ghidra-headless.ps1" }
 
 [dependencies]
+cmake = ">=3.28,<4"
