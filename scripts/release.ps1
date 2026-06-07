@@ -1,6 +1,8 @@
 param(
     [Parameter(Mandatory = $true, Position = 0)]
     [string]$Version,
+    # Ship a release even when there are no user-facing commits since the
+    # last tag (writes a maintenance changelog entry instead of aborting).
     [switch]$Force
 )
 
@@ -21,6 +23,22 @@ Set-Location $repoRoot
 
 Import-Module (Join-Path $repoRoot 'cameraunlock-core\powershell\ReleaseWorkflow.psm1') -Force
 
+# Mirrors New-ChangelogFromCommits' insertion so a -Force maintenance entry
+# lands in the same place with the same shape.
+function Add-MaintenanceChangelogEntry {
+    param([string]$Path, [string]$NewVersion)
+    $date = Get-Date -Format 'yyyy-MM-dd'
+    $entry = "## [$NewVersion] - $date`n`n### Changed`n`n- Maintenance release (no user-facing changes).`n`n"
+    $changelog = Get-Content $Path -Raw
+    if ($changelog -match '(?s)(# Changelog.*?)(## \[)') {
+        $changelog = $changelog -replace '(?s)(# Changelog.*?\n\n)', "`$1$entry"
+    } else {
+        $changelog = $changelog -replace '(?s)(# Changelog.*?\n)', "`$1$entry"
+    }
+    $changelog = $changelog.TrimEnd() + "`n"
+    Set-Content $Path $changelog -NoNewline
+}
+
 $versionHeader = Join-Path $repoRoot 'src\version.h'
 if (-not (Test-Path $versionHeader)) { throw "Missing $versionHeader" }
 $currentMatch = (Select-String -Path $versionHeader -Pattern 'HEADTRACKING_VERSION_STRING\s+"([^"]+)"').Matches
@@ -40,6 +58,34 @@ if (-not $Force -and -not (Test-CleanGitStatus)) { throw "Working tree is not cl
 
 $tag = "v$newVersion"
 if (Test-GitTagExists -Tag $tag) { throw "Tag $tag already exists." }
+
+$changelogPath = Join-Path $repoRoot 'CHANGELOG.md'
+
+# Changelog - generate it BEFORE mutating any version files so an abort here
+# (no user-facing commits since the last tag) leaves the working tree clean
+# instead of stranding a half-applied version bump with no tag.
+Write-Host "Generating CHANGELOG..." -ForegroundColor Cyan
+$hasExistingTags = git tag -l 2>$null
+if (-not $hasExistingTags) {
+    # First release - ensure a baseline CHANGELOG exists
+    if (-not (Test-Path $changelogPath)) {
+        $date = Get-Date -Format 'yyyy-MM-dd'
+        "# Changelog`n`n## [$newVersion] - $date`n`nFirst release.`n" | Set-Content $changelogPath
+        Write-Host "  Wrote initial CHANGELOG.md" -ForegroundColor Gray
+    }
+} else {
+    try {
+        New-ChangelogFromCommits -ChangelogPath $changelogPath -Version $newVersion | Out-Null
+    } catch {
+        if (-not $Force) {
+            Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Host "No user-facing changes to release. Re-run with -Force for a maintenance release." -ForegroundColor Yellow
+            exit 1
+        }
+        Write-Host "No user-facing commits since last tag - writing maintenance entry (-Force)." -ForegroundColor Yellow
+        Add-MaintenanceChangelogEntry -Path $changelogPath -NewVersion $newVersion
+    }
+}
 
 # Update version.h
 if (-not ($newVersion -match '^(\d+)\.(\d+)\.(\d+)$')) {
@@ -78,10 +124,6 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 Write-Host "Building release..." -ForegroundColor Cyan
 & pixi run build-release
 if ($LASTEXITCODE -ne 0) { throw "pixi run build-release failed (exit $LASTEXITCODE)" }
-
-# Changelog
-$changelogPath = Join-Path $repoRoot 'CHANGELOG.md'
-New-ChangelogFromCommits -ChangelogPath $changelogPath -Version $newVersion | Out-Null
 
 # Commit version + changelog
 $committed = Invoke-VersionCommit -Version $newVersion -Files @($versionHeader, $pixiPath, $cmakePath, $manifestPath, $changelogPath)
