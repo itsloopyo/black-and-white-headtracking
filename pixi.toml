@@ -9,7 +9,10 @@ platforms = ["win-64"]
 [tasks]
 # B&W is a 32-bit DirectX 7 game - everything is built x86.
 sync          = { cmd = "git submodule update --remote cameraunlock-core" }
-setup = { cmd = "powershell -Command \"if (-not (Test-Path 'build/CMakeCache.txt')) { cmake -B build -G 'Visual Studio 17 2022' -A Win32 } else { Write-Host 'Build already configured, skipping setup' -ForegroundColor Yellow }\"" }
+# No -G: let CMake auto-detect the installed Visual Studio generator. Pinning
+# "Visual Studio 17 2022" broke on CI once the windows runner image moved to
+# VS 2026 (VS 17 absent); auto-detect picks whatever VS the machine has.
+setup = { cmd = "powershell -Command \"if (-not (Test-Path 'build/CMakeCache.txt')) { cmake -B build -A Win32 } else { Write-Host 'Build already configured, skipping setup' -ForegroundColor Yellow }\"" }
 build         = { cmd = "cmake --build build --config Debug",   depends-on = ["setup"] }
 build-release = { cmd = "cmake --build build --config Release", depends-on = ["setup"] }
 install       = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 Release", depends-on = ["build-release"] }
