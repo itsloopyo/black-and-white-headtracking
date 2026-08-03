@@ -25,4 +25,6 @@ clean-all     = { cmd = "powershell -Command \"if (Test-Path 'build') { Remove-I
 ghidra-script = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/ghidra-headless.ps1" }
 
 [dependencies]
-cmake = ">=3.28,<4"
+# >=4.1 for the "Visual Studio 18 2026" generator (CI runners dropped VS 2022);
+# upper bound keeps the locked build >2 weeks old.
+cmake = ">=4.1,<4.4.1"
