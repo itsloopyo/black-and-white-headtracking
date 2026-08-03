@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.4] - 2026-08-03
+
+### Fixed
+
+- harden release.ps1 - changelog gate before version bump, add -Force
+- drop pinned VS 2022 CMake generator, let CMake auto-detect
+
+### Other
+
+- Link Discord, Lopari and Headcam from the README
+
 ## [0.1.2] - 2026-06-07
 
 ### Added
