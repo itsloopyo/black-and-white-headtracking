@@ -16,7 +16,13 @@ struct Config {
     bool invert_pitch = false;
     bool invert_roll = false;
 
-    float smoothing = 0.0f;
+    // Smoothing is chosen per connection from the packet's source address, and
+    // both values cover rotation and position alike. A tracker running on this
+    // machine is already steady, so local_smoothing is 0.0 and nothing floors
+    // it; a phone on WiFi jitters over the network, which is what
+    // remote_smoothing is for.
+    float local_smoothing = 0.0f;
+    float remote_smoothing = 0.15f;
 
     float deadzone_yaw = 0.0f;
     float deadzone_pitch = 0.0f;
@@ -37,7 +43,6 @@ struct Config {
     float pos_limit_y      = 0.20f;
     float pos_limit_z      = 0.40f;
     float pos_limit_z_back = 0.10f;
-    float pos_smoothing    = 0.15f;
     // Engine world units per metre of head movement. This is the primary
     // tuning knob - raise it until lean feels responsive without nausea.
     float pos_world_scale  = 40.0f;
@@ -50,7 +55,6 @@ struct Config {
     // the camera at full zoom-out. Lower this if zoom-out feels too strong.
     float pos_zoom_scale_max = 2.5f;
 
-    int recenter_vk  = 0x24;  // VK_HOME
     int toggle_vk    = 0x23;  // VK_END
     int yaw_mode_vk  = 0x22;  // VK_NEXT (Page Down)
     int mode_cycle_vk = 0x21; // VK_PRIOR (Page Up): 6DOF -> rotation -> position
@@ -59,8 +63,6 @@ struct Config {
     // true  = horizon-locked yaw (yaw around world up axis, default)
     // false = camera-local yaw (yaw composed with pitch/roll)
     bool world_space_yaw = true;
-
-    bool log_to_file = false;
 
     static std::string IniPath();  // <game folder>\HeadTracking.ini
     static Config LoadOrCreateDefault();

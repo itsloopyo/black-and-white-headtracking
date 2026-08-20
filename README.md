@@ -64,7 +64,7 @@ A VR headset makes a precise, low-latency tracker even though the game itself is
 1. Connect the headset to your PC over Air Link (Quest) or [Virtual Desktop](https://www.vrdesktop.net/).
 2. Start SteamVR so the headset's pose is available to other apps.
 3. In OpenTrack, set **Tracker** to `SteamVR` and **Output** to `UDP over network` at `127.0.0.1:4242`.
-4. Put the headset on, face forward, click **Start**, and press `Home` in-game to recenter.
+4. Put the headset on, face forward, and click **Start** to centre it in OpenTrack.
 
 ### Webcam Setup
 
@@ -72,7 +72,7 @@ OpenTrack ships with a neuralnet tracker that works with any webcam:
 
 1. Set **Tracker** to `Neuralnet Tracker`.
 2. Click the gear icon next to the tracker and select your webcam.
-3. Center yourself in front of the camera, click **Start**, and press `Home` in-game to recenter.
+3. Center yourself in front of the camera and click **Start** to centre it in OpenTrack.
 
 ### Phone App Setup
 
@@ -86,7 +86,6 @@ Two equivalent binding sets - use whichever your keyboard has:
 
 | Action              | Nav-cluster | Chord          |
 |---------------------|-------------|----------------|
-| Recenter            | `Home`      | `Ctrl+Shift+T` |
 | Toggle tracking     | `End`       | `Ctrl+Shift+Y` |
 | Cycle tracking mode | `Page Up`   | `Ctrl+Shift+G` |
 | Toggle yaw mode     | `Page Down` | `Ctrl+Shift+H` |
@@ -106,6 +105,13 @@ The nav-cluster keys are configurable in `HeadTracking.ini`; the chord bindings 
 
 Settings live in `HeadTracking.ini`, placed next to `runblack.exe`. Edit with any text editor; changes take effect on next game launch.
 
+A comment has to sit on its own line, above the key. The parser hands the whole
+text after `=` to the value reader. For a `true`/`false` or text setting that
+text is compared as a whole, so a trailing `; note` makes the comparison fail
+and the setting silently keeps its default. Numeric settings survive a trailing
+comment because the number is read off the front of the text, which is why some
+lines below still carry one. Putting every comment on its own line always works.
+
 ```ini
 [Network]
 Port=4242
@@ -120,7 +126,11 @@ InvertPitch=false
 InvertRoll=false
 
 [Smoothing]
-Amount=0.0       ; 0.0 instant, up to 0.99 max smoothing
+; Covers rotation and position alike. Which value is used is picked per
+; connection from where the tracker sends from. 0.0 instant, up to 0.99 max,
+; and nothing floors either.
+LocalSmoothing=0.0    ; tracker running on this PC
+RemoteSmoothing=0.15  ; tracker on the network, e.g. a phone over WiFi
 
 [Deadzone]
 Yaw=0.0
@@ -142,19 +152,16 @@ LimitX=0.30        ; movement envelope in metres, before world scaling
 LimitY=0.20
 LimitZ=0.40        ; forward lean (generous)
 LimitZBack=0.10    ; backward lean (restricted)
-Smoothing=0.15
 
 [Hotkeys]
-Recenter=0x24    ; VK_HOME
 Toggle=0x23      ; VK_END
 YawMode=0x22     ; VK_NEXT (Page Down) - toggle world vs camera-local yaw
+ModeCycle=0x21   ; VK_PRIOR (Page Up) - cycle 6DOF -> rotation-only -> position-only
 DebounceMs=200
 
 [View]
-WorldSpaceYaw=true   ; true = horizon-locked yaw (default), false = camera-local
-
-[Debug]
-LogToFile=false
+; true = horizon-locked yaw (default), false = camera-local
+WorldSpaceYaw=true
 ```
 
 ## Troubleshooting
@@ -163,28 +170,28 @@ LogToFile=false
 
 - Make sure you launched the game via `bw-headtracking-launcher.exe`, not `runblack.exe` directly.
 - Confirm `HeadTracking.dll` sits next to `runblack.exe`.
-- Set `LogToFile=true` in the `[Debug]` section and check the log next to the game executable.
+- Read `HeadTracking_debug.log` next to `runblack.exe`. It is rewritten on every launch and records the whole startup chain: which hooks were installed, the UDP port, and whether any tracker packets arrived.
 
 **No tracking response**
 
 - Verify OpenTrack is running and its output is set to UDP `127.0.0.1:4242`.
-- Press `End` to ensure tracking is enabled, then `Home` to recenter.
+- Press `End` to ensure tracking is enabled, then centre the view in your tracker app. The mod applies the pose it is sent as absolute and keeps no centre of its own.
 - Check that no firewall is blocking local UDP traffic on port 4242.
 
 **Jittery or unstable tracking**
 
-- Raise `Smoothing.Amount` in `HeadTracking.ini` (try `0.3` to start).
+- Raise the smoothing value your tracker actually uses in `HeadTracking.ini`: `[Smoothing] LocalSmoothing` if it runs on this PC, `[Smoothing] RemoteSmoothing` if it is a phone or other device on the network (try `0.3` to start). The log records which of the two is in effect.
 - Increase per-axis `Deadzone` values to suppress micro-movements near center.
 - If using a phone app, prefer sending directly to port 4242 rather than relaying via OpenTrack.
 
 **Positional tracking feels too strong / too weak / wrong direction**
 
 - `Position.WorldScale` is the master knob: lower it if leaning lurches the camera, raise it until the shift is noticeable. It converts metres of head movement into engine units.
-- Positional tracking automatically scales with zoom so it feels the same zoomed in or out. By default (`ZoomReference=0`) it locks to the zoom level you're at when tracking first applies, and scales relative to that. If you want a fixed reference, enable `LogToFile`, read the `focal=` value in the log at your preferred zoom, and set `ZoomReference` to it.
+- Positional tracking automatically scales with zoom so it feels the same zoomed in or out. By default (`ZoomReference=0`) it locks to the zoom level you're at when tracking first applies, and scales relative to that. If you want a fixed reference, read the `focal=` value in `HeadTracking_debug.log` at your preferred zoom, and set `ZoomReference` to it.
 - `ZoomScaleMax` caps how far the zoom scaling can push (range `[1/max, max]`). B&W's focal distance spans roughly 500x across the zoom range, so without a cap the camera lunges at full zoom-out. If zoom-out still feels too strong, lower `ZoomScaleMax` (e.g. `1.8`); if zoom-out feels too weak, raise it.
 - Flip `InvertX/Y/Z` if an axis pushes the view the wrong way.
 - Set `Position.Enabled=false` to disable 6DOF and keep rotation only.
-- Position is applied last, as a camera-local shift (relative to where you're looking), and recenters with `Home` alongside rotation.
+- Position is applied last, as a camera-local shift (relative to where you're looking).
 
 **Yaw feels wrong at extreme pitch**
 

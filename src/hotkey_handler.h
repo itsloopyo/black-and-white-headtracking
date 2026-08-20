@@ -8,8 +8,7 @@ class Plugin;
 
 class HotkeyHandler {
 public:
-    void Start(Plugin& plugin, int recenter_vk, int toggle_vk, int yaw_mode_vk,
-               int mode_cycle_vk);
+    void Start(Plugin& plugin, int toggle_vk, int yaw_mode_vk, int mode_cycle_vk);
     void Stop();
 
 private:

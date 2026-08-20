@@ -9,6 +9,23 @@
 
 namespace headtracking {
 
+// The old value is deliberately NOT migrated into the new keys. The single
+// Smoothing value carried a hidden 0.15 floor, so the number in an existing
+// config does not mean what it used to: copying it across would hand a local
+// user smoothing they never chose under the new semantics, and copying it into
+// only one of the two keys would be a guess about which connection they were on.
+static void WarnRetiredSmoothingKey(const cameraunlock::IniReader& reader,
+                                    const char* section, const char* key) {
+    if (reader.ReadString(section, key, "").empty()) return;
+    HT_LOG(
+        "[config] key [%s] %s has been retired and is IGNORED. Smoothing is now two "
+        "keys: LocalSmoothing (default 0, applies to a tracker on this machine) and "
+        "RemoteSmoothing (default 0.15, applies to a tracker on the network). The "
+        "old value is not migrated because the semantics changed - it carried a "
+        "hidden 0.15 floor that no longer exists. Set the two new keys.",
+        section, key);
+}
+
 std::string Config::IniPath() {
     char buf[MAX_PATH] = {};
     // GetModuleFileNameA does not guarantee null-termination on truncation, so
@@ -40,7 +57,13 @@ void Config::WriteDefault(const std::string& path) {
     w.WriteBool("InvertRoll", false);
     w.WriteBlankLine();
     w.WriteSection("Smoothing");
-    w.WriteDouble("Amount", 0.0);
+    w.WriteComment(" Covers rotation and position alike. Which value is used is picked per");
+    w.WriteComment(" connection from where the tracker sends from: LocalSmoothing for a");
+    w.WriteComment(" tracker on this PC, RemoteSmoothing for a device on the network (a");
+    w.WriteComment(" phone over WiFi, say). 0.0 instant, up to 0.99 max. Nothing floors");
+    w.WriteComment(" either, so 0.0 really is zero-latency tracking.");
+    w.WriteDouble("LocalSmoothing", 0.0);
+    w.WriteDouble("RemoteSmoothing", 0.15);
     w.WriteBlankLine();
     w.WriteSection("Deadzone");
     w.WriteDouble("Yaw", 0.0);
@@ -67,10 +90,8 @@ void Config::WriteDefault(const std::string& path) {
     w.WriteDouble("LimitY", 0.20);
     w.WriteDouble("LimitZ", 0.40);
     w.WriteDouble("LimitZBack", 0.10);
-    w.WriteDouble("Smoothing", 0.15);
     w.WriteBlankLine();
     w.WriteSection("Hotkeys");
-    w.WriteHex("Recenter", 0x24);
     w.WriteHex("Toggle", 0x23);
     w.WriteHex("YawMode", 0x22);
     w.WriteComment(" Page Up: cycle 6DOF -> rotation-only -> position-only");
@@ -80,9 +101,6 @@ void Config::WriteDefault(const std::string& path) {
     w.WriteSection("View");
     w.WriteComment(" true = horizon-locked yaw (default), false = camera-local yaw");
     w.WriteBool("WorldSpaceYaw", true);
-    w.WriteBlankLine();
-    w.WriteSection("Debug");
-    w.WriteBool("LogToFile", false);
 }
 
 Config Config::LoadOrCreateDefault() {
@@ -117,9 +135,39 @@ Config Config::LoadOrCreateDefault() {
     c.invert_pitch = r.ReadBool("Sensitivity", "InvertPitch", false);
     c.invert_roll  = r.ReadBool("Sensitivity", "InvertRoll",  false);
 
-    c.smoothing = r.ReadFloat("Smoothing", "Amount", 0.0f);
-    if (!std::isfinite(c.smoothing) || c.smoothing < 0.0f) c.smoothing = 0.0f;
-    if (c.smoothing > 0.99f) c.smoothing = 0.99f;
+    // Validation only, never a floor: a non-finite value cannot reach the
+    // smoothing math, but whatever the user set inside the range stands, 0.0
+    // included. `fallback` is the shipped default of the key being read, and
+    // the two keys do not share one - a refused RemoteSmoothing has to land on
+    // 0.15, not on LocalSmoothing's 0.0, or a phone on WiFi silently ends up
+    // with no smoothing at all on raw network jitter.
+    //
+    // Out-of-range values are clamped rather than refused. That is not because
+    // the math breaks: the core clamps its own interpolation speed to
+    // [0.1, 50], so a smoothing above 1 no longer drives the per-frame factor
+    // negative, it just saturates. The clamp is here so the value the mod acts
+    // on and the value the INI advertises stay the same number.
+    auto smoothing_or = [](float v, float fallback) {
+        float f = std::isfinite(v) ? v : fallback;
+        if (f < 0.0f) return 0.0f;
+        return f > 0.99f ? 0.99f : f;
+    };
+    auto read_smoothing = [&](const char* key, float fallback) {
+        const float raw = r.ReadFloat("Smoothing", key, fallback);
+        const float clean = smoothing_or(raw, fallback);
+        // A NaN raw value compares unequal to everything including itself, so
+        // it takes this branch too and the substitution is never silent.
+        if (raw != clean) {
+            HT_LOG("[config] Smoothing.%s=%.4f is out of range or not finite; using %.4f",
+                   key, raw, clean);
+        }
+        return clean;
+    };
+    c.local_smoothing  = read_smoothing("LocalSmoothing",  0.0f);
+    c.remote_smoothing = read_smoothing("RemoteSmoothing", 0.15f);
+
+    WarnRetiredSmoothingKey(r, "Smoothing", "Amount");
+    WarnRetiredSmoothingKey(r, "Position", "Smoothing");
 
     auto deadzone_or = [](float v) {
         return (std::isfinite(v) && v > 0.0f) ? v : 0.0f;
@@ -151,19 +199,13 @@ Config Config::LoadOrCreateDefault() {
     c.pos_limit_y      = limit_or(r.ReadFloat("Position", "LimitY",     0.20f), 0.20f);
     c.pos_limit_z      = limit_or(r.ReadFloat("Position", "LimitZ",     0.40f), 0.40f);
     c.pos_limit_z_back = limit_or(r.ReadFloat("Position", "LimitZBack", 0.10f), 0.10f);
-    c.pos_smoothing = r.ReadFloat("Position", "Smoothing", 0.15f);
-    if (!std::isfinite(c.pos_smoothing) || c.pos_smoothing < 0.0f) c.pos_smoothing = 0.0f;
-    if (c.pos_smoothing > 0.99f) c.pos_smoothing = 0.99f;
 
-    c.recenter_vk  = r.ReadHex("Hotkeys", "Recenter", 0x24);
     c.toggle_vk    = r.ReadHex("Hotkeys", "Toggle",   0x23);
     c.yaw_mode_vk  = r.ReadHex("Hotkeys", "YawMode",  0x22);
     c.mode_cycle_vk = r.ReadHex("Hotkeys", "ModeCycle", 0x21);
     c.debounce_ms  = r.ReadInt("Hotkeys", "DebounceMs", 200);
 
     c.world_space_yaw = r.ReadBool("View", "WorldSpaceYaw", true);
-
-    c.log_to_file = r.ReadBool("Debug", "LogToFile", false);
 
     return c;
 }

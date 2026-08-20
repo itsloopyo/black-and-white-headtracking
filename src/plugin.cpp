@@ -4,6 +4,8 @@
 #include "hotkey_handler.h"
 #include "debug_log.h"
 
+#include "cameraunlock/math/smoothing_utils.h"
+
 namespace headtracking {
 
 namespace {
@@ -25,7 +27,6 @@ void ApplyRotationConfig(cameraunlock::TrackingProcessor& processor, const Confi
     d.pitch = c.deadzone_pitch;
     d.roll = c.deadzone_roll;
     processor.SetDeadzone(d);
-    processor.SetSmoothing(c.smoothing);
 }
 
 void ApplyPositionConfig(cameraunlock::PositionProcessor& processor, const Config& c) {
@@ -40,7 +41,10 @@ void ApplyPositionConfig(cameraunlock::PositionProcessor& processor, const Confi
     ps.limit_y = c.pos_limit_y;
     ps.limit_z = c.pos_limit_z;
     ps.limit_z_back = c.pos_limit_z_back;
-    ps.smoothing = c.pos_smoothing;
+    // Position has no smoothing setting of its own - it rides the same two
+    // values as rotation, pushed through the session after these settings land.
+    ps.local_smoothing = c.local_smoothing;
+    ps.remote_smoothing = c.remote_smoothing;
     processor.SetSettings(ps);
     // The core default (0.15) synthesises translation from head rotation to
     // cancel a webcam pivot in front of the face. Our trackers report position
@@ -60,7 +64,6 @@ Plugin::~Plugin() { Shutdown(); }
 
 bool Plugin::Initialize() {
     m_config = Config::LoadOrCreateDefault();
-    SetFileLogging(m_config.log_to_file);
     m_enabled.store(m_config.enabled_on_startup);
     m_worldSpaceYaw.store(m_config.world_space_yaw);
     m_session.SetMode(m_config.pos_enabled
@@ -69,6 +72,11 @@ bool Plugin::Initialize() {
 
     ApplyRotationConfig(m_session.GetProcessor(), m_config);
     ApplyPositionConfig(m_session.GetPositionProcessor(), m_config);
+    // One pair of values for rotation and position alike. The session picks
+    // between them per connection from the receiver's source-address check, so
+    // nothing here decides which one is in effect.
+    m_session.SetLocalSmoothing(m_config.local_smoothing);
+    m_session.SetRemoteSmoothing(m_config.remote_smoothing);
 
     m_receiver.SetLog([](const std::string& msg) {
         HT_LOG("[receiver] %s", msg.c_str());
@@ -86,8 +94,7 @@ bool Plugin::Initialize() {
     }
 
     m_hotkeys = std::make_unique<HotkeyHandler>();
-    m_hotkeys->Start(*this, m_config.recenter_vk, m_config.toggle_vk, m_config.yaw_mode_vk,
-                     m_config.mode_cycle_vk);
+    m_hotkeys->Start(*this, m_config.toggle_vk, m_config.yaw_mode_vk, m_config.mode_cycle_vk);
     HT_LOG("[plugin] initialized");
     return true;
 }
@@ -98,8 +105,20 @@ void Plugin::Shutdown() {
     m_receiver.Stop();
 }
 
-void Plugin::Recenter() {
-    m_session.Recenter();
+// The session re-reads the receiver's source-address check every update, so a
+// player who switches from a local OpenTrack instance to a phone on WiFi
+// mid-session gets the other smoothing parameter without restarting the game.
+// This only records the switch.
+void Plugin::LogConnectionLocality() {
+    const bool isRemote = m_session.IsRemoteConnection();
+    if (m_remoteConnectionKnown && isRemote == m_remoteConnection) return;
+
+    m_remoteConnection = isRemote;
+    m_remoteConnectionKnown = true;
+    HT_LOG("[plugin] tracker source is %s - smoothing=%.2f",
+           isRemote ? "a remote device" : "on this machine",
+           cameraunlock::math::GetEffectiveSmoothing(
+               m_config.local_smoothing, m_config.remote_smoothing, isRemote));
 }
 
 void Plugin::ToggleYawMode() {
@@ -141,6 +160,7 @@ bool Plugin::GetCurrentRotationRadians(float& yaw, float& pitch, float& roll) {
 
     const float dt = m_frameClock.Tick();
     if (!m_session.Update(dt)) return false;
+    LogConnectionLocality();
 
     float yaw_deg = 0.0f, pitch_deg = 0.0f, roll_deg = 0.0f;
     m_session.GetRotation(yaw_deg, pitch_deg, roll_deg);
@@ -153,7 +173,7 @@ bool Plugin::GetCurrentRotationRadians(float& yaw, float& pitch, float& roll) {
     m_cachedValid.store(true, std::memory_order_release);
 
     // Positional tracking. The session has run the raw head position through
-    // the shared pipeline (recentre, sensitivity, smooth, clamp); the result
+    // the shared pipeline (sensitivity, smooth, clamp); the result
     // is a camera-local displacement in metres. Scale it to engine units.
     // The camera hook applies it as the final shift on the render matrix.
     float ox = 0.0f, oy = 0.0f, oz = 0.0f;
@@ -188,20 +208,28 @@ bool Plugin::GetCurrentRotationRadians(float& yaw, float& pitch, float& roll) {
         m_cachedPosZ.store(wz, std::memory_order_release);
         m_cachedPosValid.store(true, std::memory_order_release);
 
-        // Throttled (~1/s) calibration trace: raw tracker metres, clamped
-        // metres, and the engine-unit offset actually handed to the camera
-        // hook. Use this to size WorldScale and confirm each axis moves the
-        // right way.
+        // Calibration trace: raw tracker metres, clamped metres, and the
+        // engine-unit offset actually handed to the camera hook. Use this to
+        // size WorldScale and confirm each axis moves the right way.
+        //
+        // One line a second for the first minute of tracked position, then
+        // silent. Unbounded it was ~540 KB an hour, which buries the startup
+        // chain a bug report is read for; a minute is long enough to lean in
+        // each direction and read the numbers back.
         static float s_posLogAccum = 0.0f;
-        s_posLogAccum += dt;
-        if (s_posLogAccum >= 1.0f) {
-            s_posLogAccum = 0.0f;
-            float rx = 0.0f, ry = 0.0f, rz = 0.0f;
-            m_receiver.GetPosition(rx, ry, rz);
-            HT_LOG("[pos] raw_m=(%.3f,%.3f,%.3f) clamped_m=(%.3f,%.3f,%.3f) "
-                   "world=(%.2f,%.2f,%.2f) scale=%.1f focal=%.1f zoom=%.2f",
-                   rx, ry, rz, ox, oy, oz, wx, wy, wz,
-                   m_config.pos_world_scale, focal, zoom);
+        static int s_posLogLines = 0;
+        if (s_posLogLines < 60) {
+            s_posLogAccum += dt;
+            if (s_posLogAccum >= 1.0f) {
+                s_posLogAccum = 0.0f;
+                ++s_posLogLines;
+                float rx = 0.0f, ry = 0.0f, rz = 0.0f;
+                m_receiver.GetPosition(rx, ry, rz);
+                HT_LOG("[pos] raw_m=(%.3f,%.3f,%.3f) clamped_m=(%.3f,%.3f,%.3f) "
+                       "world=(%.2f,%.2f,%.2f) scale=%.1f focal=%.1f zoom=%.2f",
+                       rx, ry, rz, ox, oy, oz, wx, wy, wz,
+                       m_config.pos_world_scale, focal, zoom);
+            }
         }
     } else {
         m_cachedPosValid.store(false, std::memory_order_release);

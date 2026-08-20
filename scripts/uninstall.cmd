@@ -25,7 +25,7 @@
 :: --- CONFIG BLOCK ---
 set "GAME_ID=black-and-white"
 set "MOD_DISPLAY_NAME=Black ^& White Head Tracking"
-set "MOD_DLLS=HeadTracking.dll bw-headtracking-launcher.exe HeadTracking.ini"
+set "MOD_DLLS=HeadTracking.dll bw-headtracking-launcher.exe HeadTracking.ini HeadTracking_debug.log HeadTracking_debug.prev.log"
 set "MOD_INTERNAL_NAME=BlackAndWhiteHeadTracking"
 set "STATE_FILE=.headtracking-state.json"
 set "FRAMEWORK_TYPE=None"

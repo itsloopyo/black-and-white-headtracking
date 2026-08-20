@@ -31,7 +31,7 @@ set "MOD_INTERNAL_NAME=BlackAndWhiteHeadTracking"
 set "MOD_VERSION=0.1.0"
 set "STATE_FILE=.headtracking-state.json"
 set "FRAMEWORK_TYPE=None"
-set "MOD_CONTROLS=Controls: Home = Recenter  ^|  End = Toggle tracking  ^|  Page Up = Cycle tracking mode  ^|  Page Down = Toggle yaw mode"
+set "MOD_CONTROLS=Controls: End = Toggle tracking  ^|  Page Up = Cycle tracking mode  ^|  Page Down = Toggle yaw mode"
 :: MOD_DLLS is the shim DLL(s). Typical is one entry (xinput1_3.dll).
 :: Can be multi-entry if the shim needs a sibling INI / config file.
 :: --- END CONFIG BLOCK ---

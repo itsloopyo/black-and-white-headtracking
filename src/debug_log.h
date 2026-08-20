@@ -8,9 +8,8 @@
 namespace headtracking {
 
 // Opens HeadTracking_debug.log next to the game EXE (truncated each launch).
-// Called once from the bootstrap thread before the first HT_LOG so pre-config
-// lines are captured; Plugin::Initialize then calls SetFileLogging to honour
-// the user's preference.
+// Called once from the bootstrap thread before the first HT_LOG, so the lines
+// written before the config is read are captured too.
 inline void OpenLogFile() {
     wchar_t buf[MAX_PATH] = {};
     // GetModuleFileNameW does not guarantee null-termination on truncation, so
@@ -23,10 +22,6 @@ inline void OpenLogFile() {
         if (slash != std::wstring::npos) dir = exe.substr(0, slash + 1);
     }
     cameraunlock::logging::Open(dir + L"HeadTracking_debug.log");
-}
-
-inline void SetFileLogging(bool enabled) {
-    if (!enabled) cameraunlock::logging::Close();
 }
 
 }  // namespace headtracking

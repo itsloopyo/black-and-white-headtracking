@@ -31,7 +31,6 @@ public:
     void CycleTrackingMode();
     const char* TrackingModeName() const;
 
-    void Recenter();
 
     // Pulls the latest UDP packet, runs it through the processor and returns
     // the processed yaw/pitch/roll in radians. Returns false if tracking is
@@ -52,12 +51,26 @@ public:
     const Config& GetConfig() const { return m_config; }
 
 private:
+    // The session itself re-reads the receiver's connection locality each
+    // update and points both processors at LocalSmoothing or RemoteSmoothing.
+    // This only reports the switch, so a bug report can say which of the two
+    // values was actually in effect.
+    void LogConnectionLocality();
+
     Config m_config;
     std::atomic<bool> m_enabled{false};
+
+    bool m_remoteConnection = false;
+    bool m_remoteConnectionKnown = false;
     std::atomic<bool> m_worldSpaceYaw{true};
 
     cameraunlock::UdpReceiver m_receiver;
-    cameraunlock::HeadTrackingSession<cameraunlock::UdpReceiver> m_session{m_receiver};
+    using Session = cameraunlock::HeadTrackingSession<cameraunlock::UdpReceiver>;
+    // Without IsRemoteConnection() on the receiver the session silently falls
+    // back to LocalSmoothing forever, with nothing at the call site to show it.
+    static_assert(Session::kHasRemoteConnection,
+                  "receiver must expose IsRemoteConnection() to select Local/RemoteSmoothing");
+    Session m_session{m_receiver};
     cameraunlock::time::FrameClock m_frameClock;
 
     std::unique_ptr<CameraHook>    m_cameraHook;

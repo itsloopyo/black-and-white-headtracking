@@ -8,21 +8,16 @@ namespace headtracking {
 
 namespace {
 // Ctrl+Shift chord letters per the shared T/Y/U/G/H/J cluster convention:
-// T = recenter, Y = toggle tracking, G = mode cycle, H = yaw mode.
-constexpr int kVkT = 0x54;
+// Y = toggle tracking, G = mode cycle, H = yaw mode.
 constexpr int kVkY = 0x59;
 constexpr int kVkG = 0x47;
 constexpr int kVkH = 0x48;
 }  // namespace
 
-void HotkeyHandler::Start(Plugin& plugin, int recenter_vk, int toggle_vk, int yaw_mode_vk,
+void HotkeyHandler::Start(Plugin& plugin, int toggle_vk, int yaw_mode_vk,
                           int mode_cycle_vk) {
     using cameraunlock::input::ChordGuarded;
 
-    const auto recenter = [&plugin]() {
-        plugin.Recenter();
-        HT_LOG("[hotkey] recenter");
-    };
     const auto toggle = [&plugin]() {
         plugin.ToggleEnabled();
         HT_LOG("[hotkey] toggle -> %s", plugin.IsEnabled() ? "on" : "off");
@@ -37,12 +32,10 @@ void HotkeyHandler::Start(Plugin& plugin, int recenter_vk, int toggle_vk, int ya
         HT_LOG("[hotkey] mode cycle -> %s", plugin.TrackingModeName());
     };
 
-    m_poller.SetRecenterKey(recenter_vk, recenter);
     m_poller.SetToggleKey(toggle_vk, toggle);
     m_poller.AddHotkey(yaw_mode_vk, yawMode);
     m_poller.AddHotkey(mode_cycle_vk, modeCycle);
 
-    m_poller.AddHotkey(kVkT, ChordGuarded(recenter));
     m_poller.AddHotkey(kVkY, ChordGuarded(toggle));
     m_poller.AddHotkey(kVkH, ChordGuarded(yawMode));
     m_poller.AddHotkey(kVkG, ChordGuarded(modeCycle));
