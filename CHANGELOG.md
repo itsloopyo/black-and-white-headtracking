@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.0] - 2026-08-20
+
+### Added
+
+- split smoothing into Local/Remote and drop mod-side recentering
+
 ## [Unreleased]
 
 ### Changed
