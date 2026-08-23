@@ -85,6 +85,7 @@ Copy-Item $iniSrc $nexusStage
 # this ZIP extracts straight into the game folder.
 Copy-Item (Join-Path $repoRoot 'LICENSE') (Join-Path $nexusStage 'HeadTracking-LICENSE.txt')
 Copy-Item (Join-Path $repoRoot 'THIRD-PARTY-NOTICES.md') (Join-Path $nexusStage 'HeadTracking-THIRD-PARTY-NOTICES.md')
+Copy-Item (Join-Path $repoRoot 'README.md') (Join-Path $nexusStage 'HeadTracking-README.md')
 
 $nexusZip = Join-Path $outDir "$modName-v$version-nexus.zip"
 if (Test-Path $nexusZip) { Remove-Item $nexusZip -Force }

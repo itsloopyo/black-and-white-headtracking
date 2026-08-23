@@ -172,7 +172,7 @@ WorldSpaceYaw=true
 
 - Make sure you launched the game via `bw-headtracking-launcher.exe`, not `runblack.exe` directly.
 - Confirm `HeadTracking.dll` sits next to `runblack.exe`.
-- Read `HeadTracking_debug.log` next to `runblack.exe`. It is rewritten on every launch and records the whole startup chain: which hooks were installed, the UDP port, and whether any tracker packets arrived.
+- Read `HeadTracking.log` next to `runblack.exe`. Every launch starts a fresh file (the previous session is kept alongside as `HeadTracking.prev.log`), and it records the whole startup chain: the settings in effect, which hooks were installed, the UDP port, and whether any tracker packets arrived.
 
 **No tracking response**
 
@@ -189,7 +189,7 @@ WorldSpaceYaw=true
 **Positional tracking feels too strong / too weak / wrong direction**
 
 - `Position.WorldScale` is the master knob: lower it if leaning lurches the camera, raise it until the shift is noticeable. It converts metres of head movement into engine units.
-- Positional tracking automatically scales with zoom so it feels the same zoomed in or out. By default (`ZoomReference=0`) it locks to the zoom level you're at when tracking first applies, and scales relative to that. If you want a fixed reference, read the `focal=` value in `HeadTracking_debug.log` at your preferred zoom, and set `ZoomReference` to it.
+- Positional tracking automatically scales with zoom so it feels the same zoomed in or out. By default (`ZoomReference=0`) it locks to the zoom level you're at when tracking first applies, and scales relative to that. If you want a fixed reference, set `[Logging] PositionTrace=true` in `HeadTracking.ini`, play for a moment at your preferred zoom, read the `focal=` value from `HeadTracking.log`, and set `ZoomReference` to it.
 - `ZoomScaleMax` caps how far the zoom scaling can push (range `[1/max, max]`). B&W's focal distance spans roughly 500x across the zoom range, so without a cap the camera lunges at full zoom-out. If zoom-out still feels too strong, lower `ZoomScaleMax` (e.g. `1.8`); if zoom-out feels too weak, raise it.
 - Flip `InvertX/Y/Z` if an axis pushes the view the wrong way.
 - Set `Position.Enabled=false` to disable 6DOF and keep rotation only.

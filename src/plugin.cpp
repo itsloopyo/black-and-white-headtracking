@@ -95,7 +95,26 @@ bool Plugin::Initialize() {
 
     m_hotkeys = std::make_unique<HotkeyHandler>();
     m_hotkeys->Start(*this, m_config.toggle_vk, m_config.yaw_mode_vk, m_config.mode_cycle_vk);
-    HT_LOG("[plugin] initialized");
+    // The settings actually in effect, once. A bug report arrives as this log
+    // and nothing else, and every "it feels wrong" question (too strong, too
+    // laggy, wrong axis, hotkey does nothing) is answered by these numbers.
+    HT_LOG("[plugin] initialized - enabled=%d mode=%s yaw=%s "
+           "smoothing local=%.2f remote=%.2f | rot sens=(%.2f,%.2f,%.2f) "
+           "invert=(%d,%d,%d) | pos scale=%.1f zoomRef=%.1f zoomMax=%.2f "
+           "sens=(%.2f,%.2f,%.2f) invert=(%d,%d,%d) | hotkeys "
+           "toggle=0x%02X yawMode=0x%02X modeCycle=0x%02X",
+           m_enabled.load() ? 1 : 0, TrackingModeName(),
+           m_worldSpaceYaw.load() ? "world-space" : "camera-local",
+           m_config.local_smoothing, m_config.remote_smoothing,
+           m_config.sens_yaw, m_config.sens_pitch, m_config.sens_roll,
+           m_config.invert_yaw ? 1 : 0, m_config.invert_pitch ? 1 : 0,
+           m_config.invert_roll ? 1 : 0,
+           m_config.pos_world_scale, m_config.pos_zoom_reference,
+           m_config.pos_zoom_scale_max,
+           m_config.pos_sens_x, m_config.pos_sens_y, m_config.pos_sens_z,
+           m_config.pos_invert_x ? 1 : 0, m_config.pos_invert_y ? 1 : 0,
+           m_config.pos_invert_z ? 1 : 0,
+           m_config.toggle_vk, m_config.yaw_mode_vk, m_config.mode_cycle_vk);
     return true;
 }
 
@@ -212,13 +231,14 @@ bool Plugin::GetCurrentRotationRadians(float& yaw, float& pitch, float& roll) {
         // engine-unit offset actually handed to the camera hook. Use this to
         // size WorldScale and confirm each axis moves the right way.
         //
-        // One line a second for the first minute of tracked position, then
-        // silent. Unbounded it was ~540 KB an hour, which buries the startup
-        // chain a bug report is read for; a minute is long enough to lean in
-        // each direction and read the numbers back.
+        // Off unless [Logging] PositionTrace is set, and then one line a second
+        // for the first minute of tracked position. Unbounded it was ~540 KB an
+        // hour, which buries the startup chain a bug report is read for; a
+        // minute is long enough to lean in each direction and read the numbers
+        // back.
         static float s_posLogAccum = 0.0f;
         static int s_posLogLines = 0;
-        if (s_posLogLines < 60) {
+        if (m_config.log_position_trace && s_posLogLines < 60) {
             s_posLogAccum += dt;
             if (s_posLogAccum >= 1.0f) {
                 s_posLogAccum = 0.0f;

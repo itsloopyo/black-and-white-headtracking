@@ -25,11 +25,11 @@
 :: --- CONFIG BLOCK ---
 set "GAME_ID=black-and-white"
 set "MOD_DISPLAY_NAME=Black ^& White Head Tracking"
-set "MOD_DLLS=HeadTracking.dll bw-headtracking-launcher.exe HeadTracking.ini HeadTracking_debug.log HeadTracking_debug.prev.log"
+set "MOD_DLLS=HeadTracking.dll bw-headtracking-launcher.exe HeadTracking.ini HeadTracking.log HeadTracking.prev.log"
 set "MOD_INTERNAL_NAME=BlackAndWhiteHeadTracking"
 set "STATE_FILE=.headtracking-state.json"
 set "FRAMEWORK_TYPE=None"
-set "LEGACY_DLLS="
+set "LEGACY_DLLS=HeadTracking_debug.log HeadTracking_debug.prev.log HeadTracking_debug.previous.log"
 
 :: --- Loader-specific config (leave the ones that don't apply blank) ---
 :: MonoCecil: used to find + restore the original Assembly-CSharp.dll.

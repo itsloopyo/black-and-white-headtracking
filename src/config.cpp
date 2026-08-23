@@ -101,6 +101,12 @@ void Config::WriteDefault(const std::string& path) {
     w.WriteSection("View");
     w.WriteComment(" true = horizon-locked yaw (default), false = camera-local yaw");
     w.WriteBool("WorldSpaceYaw", true);
+    w.WriteBlankLine();
+    w.WriteSection("Logging");
+    w.WriteComment(" One line a second for the first minute of tracked position, recording");
+    w.WriteComment(" head metres, clamped metres, engine offset and focal distance. Turn on");
+    w.WriteComment(" to tune WorldScale, or to read a focal value for ZoomReference.");
+    w.WriteBool("PositionTrace", false);
 }
 
 Config Config::LoadOrCreateDefault() {
@@ -206,6 +212,8 @@ Config Config::LoadOrCreateDefault() {
     c.debounce_ms  = r.ReadInt("Hotkeys", "DebounceMs", 200);
 
     c.world_space_yaw = r.ReadBool("View", "WorldSpaceYaw", true);
+
+    c.log_position_trace = r.ReadBool("Logging", "PositionTrace", false);
 
     return c;
 }

@@ -7,9 +7,11 @@
 
 namespace headtracking {
 
-// Opens HeadTracking_debug.log next to the game EXE (truncated each launch).
-// Called once from the bootstrap thread before the first HT_LOG, so the lines
-// written before the config is read are captured too.
+// Opens HeadTracking.log next to the game EXE. Each launch starts a fresh file:
+// the outgoing one is rotated to HeadTracking.prev.log and the new one is
+// truncated, so the log never grows across sessions. Called once from the
+// bootstrap thread before the first HT_LOG, so the lines written before the
+// config is read are captured too.
 inline void OpenLogFile() {
     wchar_t buf[MAX_PATH] = {};
     // GetModuleFileNameW does not guarantee null-termination on truncation, so
@@ -21,7 +23,7 @@ inline void OpenLogFile() {
         const auto slash = exe.find_last_of(L"\\/");
         if (slash != std::wstring::npos) dir = exe.substr(0, slash + 1);
     }
-    cameraunlock::logging::Open(dir + L"HeadTracking_debug.log");
+    cameraunlock::logging::Open(dir + L"HeadTracking.log");
 }
 
 }  // namespace headtracking

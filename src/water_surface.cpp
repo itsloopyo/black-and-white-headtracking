@@ -54,12 +54,14 @@ void RenderHeadTrackedWater() {
     const float* scaled = reinterpret_cast<const float*>(kScaledMatrixAddr);
     const float* pivot  = reinterpret_cast<const float*>(kCameraPivotAddr);
 
-    static int s_logCount = 0;
-    if (s_logCount < 3) {
-        HT_LOG("[water-rhw] vp=%lux%lu pivot=(%.1f, %.1f, %.1f)",
+    // Once: proof the water render path reached us, with the viewport it is
+    // drawing into. Repeating it per call says nothing new.
+    static bool s_logged = false;
+    if (!s_logged) {
+        s_logged = true;
+        HT_LOG("[water-rhw] first draw: vp=%lux%lu pivot=(%.1f, %.1f, %.1f)",
                (unsigned long)vp.dwWidth, (unsigned long)vp.dwHeight,
                pivot[0], pivot[1], pivot[2]);
-        ++s_logCount;
     }
 
     // Tessellated grid centered on the camera's XZ. Each grid vert is

@@ -64,6 +64,12 @@ struct Config {
     // false = camera-local yaw (yaw composed with pitch/roll)
     bool world_space_yaw = true;
 
+    // Per-second trace of tracker metres, clamped metres, engine offset and
+    // focal distance. Off by default: it is a tuning aid for WorldScale and
+    // ZoomReference, and left on it buries the startup chain a bug report is
+    // actually read for.
+    bool log_position_trace = false;
+
     static std::string IniPath();  // <game folder>\HeadTracking.ini
     static Config LoadOrCreateDefault();
     static void WriteDefault(const std::string& path);
