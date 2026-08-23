@@ -1,8 +1,8 @@
 # Black & White Head Tracking
 
-An unofficial head tracking mod for Black & White (Lionhead Studios, 2001) that adds free look on top of the game's mouse-driven gameplay using any OpenTrack-compatible tracker.
+![Mod GIF](https://media.githubusercontent.com/media/itsloopyo/black-and-white-headtracking/refs/heads/main/assets/readme-clip.gif)
 
-![Mod GIF](https://media.githubusercontent.com/media/itsloopyo/black-and-white-headtracking/main/assets/readme-clip.gif)
+An unofficial head tracking mod for Black & White (Lionhead Studios, 2001) that adds free look on top of the game's mouse-driven gameplay using any OpenTrack-compatible tracker.
 
 ## Features
 
