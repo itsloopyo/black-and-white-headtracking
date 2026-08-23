@@ -1,5 +1,15 @@
 # Third-Party Notices
 
+This file lists every third-party component compiled into, or otherwise relied on
+by, the shipped mod, together with the notices those components' licences require.
+It is included in both release ZIPs (the installer ZIP and the Nexus
+extract-to-game-folder ZIP), so a binary redistribution of this mod always carries
+these notices with it.
+
+No component of Black & White is listed here, because none is used: this mod
+contains no game code, no game assets, and no game files. It hooks a copy of the
+game the user already owns, at run time, in memory.
+
 ## MinHook
 
 - **Version:** 1.3.4

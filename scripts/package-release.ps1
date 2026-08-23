@@ -78,6 +78,14 @@ foreach ($f in $modFiles) {
 }
 Copy-Item $iniSrc $nexusStage
 
+# MinHook (BSD-2-Clause) and glm / cameraunlock-core (MIT) are statically linked
+# into HeadTracking.dll. All three licenses require their notice to travel with a
+# binary redistribution, so the Nexus ZIP carries them too - it is a distribution
+# in its own right, not a subset of the installer ZIP. Prefixed filenames because
+# this ZIP extracts straight into the game folder.
+Copy-Item (Join-Path $repoRoot 'LICENSE') (Join-Path $nexusStage 'HeadTracking-LICENSE.txt')
+Copy-Item (Join-Path $repoRoot 'THIRD-PARTY-NOTICES.md') (Join-Path $nexusStage 'HeadTracking-THIRD-PARTY-NOTICES.md')
+
 $nexusZip = Join-Path $outDir "$modName-v$version-nexus.zip"
 if (Test-Path $nexusZip) { Remove-Item $nexusZip -Force }
 Compress-Archive -Path "$nexusStage\*" -DestinationPath $nexusZip

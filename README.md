@@ -2,6 +2,8 @@
 
 ![Mod GIF](https://media.githubusercontent.com/media/itsloopyo/black-and-white-headtracking/refs/heads/main/assets/readme-clip.gif)
 
+*Footage captured in Black & White (Lionhead Studios, 2001), shown to demonstrate this mod. Black & White and all in-game imagery are the property of their respective rights holders. This project is not affiliated with or endorsed by them.*
+
 An unofficial head tracking mod for Black & White (Lionhead Studios, 2001) that adds free look on top of the game's mouse-driven gameplay using any OpenTrack-compatible tracker.
 
 ## Features
@@ -11,7 +13,7 @@ An unofficial head tracking mod for Black & White (Lionhead Studios, 2001) that 
 
 ## Requirements
 
-- A legally owned working install of [Black & White](https://en.wikipedia.org/wiki/Black_%26_White_(video_game)) (Lionhead Studios, 2001) with [Unofficial Fan Patch 1.42](https://www.bwgame.net/downloads/black-white-unofficial-patch-v1-42.1418/)
+- A legally owned install of [Black & White](https://en.wikipedia.org/wiki/Black_%26_White_(video_game)) (Lionhead Studios, 2001) that launches and runs on your version of Windows. The 2001 release does not run as shipped on modern Windows; the fan community maintains compatibility patches for it, and the [Black & White community site](https://www.bwgame.net/) is where owners of the game go for them. Sourcing and applying those is between you and that community - this mod does not bundle, require, or endorse any particular one, and it has been developed against Unofficial Fan Patch 1.42.
 - [OpenTrack](https://github.com/opentrack/opentrack) or any OpenTrack-protocol compatible tracker (webcam, phone app, hardware tracker).
 - Windows 10 or 11.
 
@@ -252,4 +254,22 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Disclaimer
 
-Not affiliated with Lionhead Studios, Microsoft, or any current rights holder of Black & White. No game files are included. Use at your own risk.
+Not affiliated with, endorsed by, or sponsored by Lionhead Studios, Microsoft, or any
+current rights holder of Black & White. "Black & White" and all related names, artwork,
+and in-game content are the property of their respective owners and are referenced here
+only to identify the game this mod works with.
+
+No game code, game assets, or game files of any kind are included in this repository or
+in any release ZIP. The mod ships only original code written for this project plus the
+permissively licensed third-party libraries listed in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). It requires a copy of the game you
+already own, it reads no game files at rest, and it circumvents no copy protection,
+licence check, or DRM.
+
+The engine addresses in `src/engine_addresses.h` and the analysis scripts in
+`scripts/ghidra/` are the product of examining a legally owned copy of the game for the
+sole purpose of making this mod interoperate with it. They record memory addresses and
+observed behaviour; no decompiled or disassembled game code is reproduced or
+redistributed here. See [scripts/ghidra/README.md](scripts/ghidra/README.md).
+
+Use at your own risk.

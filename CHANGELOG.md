@@ -2,19 +2,12 @@
 
 ## [0.2.0] - 2026-08-20
 
-### Added
-
-- split smoothing into Local/Remote and drop mod-side recentering
-
-## [Unreleased]
-
 ### Changed
 
 - The tracker owns the centre. The recenter hotkeys (`Home` / `Ctrl+Shift+T`)
   and their `[Hotkeys] Recenter` INI entry are gone, along with the mod-side
   centre capture; the tracker pose is applied as absolute. Centre the view in
   your tracker app instead.
-
 - Smoothing is now two settings instead of one: `[Smoothing] LocalSmoothing`
   (default `0.0`) applies when the tracker runs on this PC, `[Smoothing]
   RemoteSmoothing` (default `0.15`) applies when it is a phone or other device
@@ -52,81 +45,15 @@
 
 ## [0.1.2] - 2026-06-07
 
-### Added
+### Changed
 
-- add HeadTrackingSession and expand C++ core with RE Engine, Unreal, and tracking-session modules
-- aim projection, reframework/unreal hooks, input/logging hardening, games
-- add Mass Effect Legendary Edition to games catalog
-- expand games catalog, fix unicode games.json read, stage launcher manifest
-- add Pacific Drive to games catalog
-- add Homeworld: Remastered Collection to games catalog
-- add manifest-mode installer validator and ASI loader subdir support
-- authenticate GitHub API requests via env token when present
-- add R.E.P.O. detection data
-
-### Fixed
-
-- fail fast in ASI dev-deploy when the game is running
-- restore il2cpp camera position by undoing applied local delta
-- set SO_REUSEADDR so the receiver reclaims its port on relaunch
-
-### Other
-
-- templates: add uninstall.ps1; data: add Deus Ex Mankind Divided
-- powershell: add NightlyRelease module for Patreon-gated nightly builds
-- Add release nightly dispatch and publisher shim
-- protocol: disable SIO_UDP_CONNRESET and add one-shot receiver diagnostics; powershell: write nightly manifest.json without UTF-8 BOM; data: add Mixtape
-- powershell: stop redirecting git stderr in Update-CameraUnlockCoreToRemoteTip
-- powershell: publish dev builds as GitHub pre-releases
-- protocol: disable SIO_UDP_CONNRESET and add one-shot receiver diagnostics
-- data: add Mixtape
-- powershell: stop redirecting git stderr in Update-CameraUnlockCoreToRemoteTip
-- powershell: run gh under Continue so its stderr doesn't abort the dev-release publish
-- reframework: strip VR runtime DLLs on install for flatscreen mode
-- reframework: cache GetValue method and avoid per-call heap in ArrayGetValue; data: add BioShock Infinite
-- uninstall: remove reframework_revision.txt marker dropped at game root
-- install: render MOD_CONTROLS multi-line via percent expansion
-- Add YAPYAP to games.json
-- powershell: write state file BOM-less so Lopari JSON parser accepts it
-- powershell: stop redirecting git stderr in Invoke-VersionCommit
+- Updated the bundled `cameraunlock-core` submodule.
 
 ## [0.1.1] - 2026-06-07
 
-### Added
+### Changed
 
-- add HeadTrackingSession and expand C++ core with RE Engine, Unreal, and tracking-session modules
-- aim projection, reframework/unreal hooks, input/logging hardening, games
-- add Mass Effect Legendary Edition to games catalog
-- expand games catalog, fix unicode games.json read, stage launcher manifest
-- add Pacific Drive to games catalog
-- add Homeworld: Remastered Collection to games catalog
-- add manifest-mode installer validator and ASI loader subdir support
-- authenticate GitHub API requests via env token when present
-
-### Fixed
-
-- fail fast in ASI dev-deploy when the game is running
-- restore il2cpp camera position by undoing applied local delta
-- set SO_REUSEADDR so the receiver reclaims its port on relaunch
-
-### Other
-
-- templates: add uninstall.ps1; data: add Deus Ex Mankind Divided
-- powershell: add NightlyRelease module for Patreon-gated nightly builds
-- Add release nightly dispatch and publisher shim
-- protocol: disable SIO_UDP_CONNRESET and add one-shot receiver diagnostics; powershell: write nightly manifest.json without UTF-8 BOM; data: add Mixtape
-- powershell: stop redirecting git stderr in Update-CameraUnlockCoreToRemoteTip
-- powershell: publish dev builds as GitHub pre-releases
-- protocol: disable SIO_UDP_CONNRESET and add one-shot receiver diagnostics
-- data: add Mixtape
-- powershell: stop redirecting git stderr in Update-CameraUnlockCoreToRemoteTip
-- powershell: run gh under Continue so its stderr doesn't abort the dev-release publish
-- reframework: strip VR runtime DLLs on install for flatscreen mode
-- reframework: cache GetValue method and avoid per-call heap in ArrayGetValue; data: add BioShock Infinite
-- uninstall: remove reframework_revision.txt marker dropped at game root
-- install: render MOD_CONTROLS multi-line via percent expansion
-- Add YAPYAP to games.json
-- powershell: write state file BOM-less so Lopari JSON parser accepts it
+- Updated the bundled `cameraunlock-core` submodule.
 
 ## [0.1.0] - 2026-05-17
 
