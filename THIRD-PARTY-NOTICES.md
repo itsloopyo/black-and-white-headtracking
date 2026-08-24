@@ -229,11 +229,12 @@ obligation here. It is credited because the wire format is its work.
 - **Files:** `assets/readme-clip.gif`
 - **Rights holder:** the developers and publishers of Black & White, together with the
   rights holders of any third-party marks visible in frame.
-- **Usage:** a recording of the game running with this mod, captured on a
+- **Usage:** recorded from the game running with this mod, captured on a
   legitimately purchased copy, shown so a reader can see what the mod does
   before installing it.
-- **Bundled:** no. The packaging scripts ship no part of `assets/`, so it is in
-  neither release ZIP nor anything the launcher deploys.
+- **Bundled:** `assets/readme-clip.gif`: kept in this repository only. The packaging scripts
+  ship no part of `assets/`, so these are in neither release ZIP nor
+  anything the launcher deploys.
 - **Licence:** none is granted or implied by this repository. This material is
   not covered by the MIT licence in `LICENSE`, and nothing here permits reuse
   of it. Rights holders who would rather it were not published: open an issue
