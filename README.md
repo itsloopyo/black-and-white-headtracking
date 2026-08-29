@@ -1,10 +1,10 @@
 # Black & White Head Tracking
 
-![Mod GIF](https://media.githubusercontent.com/media/itsloopyo/black-and-white-headtracking/refs/heads/main/assets/readme-clip.gif)
+![Black & White running with this mod](https://media.githubusercontent.com/media/itsloopyo/black-and-white-headtracking/refs/heads/main/assets/readme-clip.gif)
 
 *Footage captured in Black & White (Lionhead Studios, 2001), shown to demonstrate this mod. Black & White and all in-game imagery are the property of their respective rights holders. This project is not affiliated with or endorsed by them.*
 
-An unofficial head tracking mod for Black & White (Lionhead Studios, 2001) that adds free look on top of the game's mouse-driven gameplay using any OpenTrack-compatible tracker.
+An unofficial head tracking mod for Black & White that moves the camera with your head while your mouse keeps control of the cursor, driven by a webcam, phone, or any OpenTrack compatible tracker, with no VR headset required.
 
 ## Features
 
