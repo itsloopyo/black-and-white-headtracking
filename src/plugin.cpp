@@ -38,7 +38,12 @@ void ApplyPositionConfig(cameraunlock::PositionProcessor& processor, const Confi
     ps.invert_y = c.pos_invert_y;
     ps.invert_z = c.pos_invert_z;
     ps.limit_x = c.pos_limit_x;
+    // The clamp is [-limit_y_down, +limit_y] and limit_y_down carries its own
+    // default, so mirror the one configured vertical limit the way
+    // PositionSettings::Symmetric does. Left unset, raising LimitY widened the
+    // upward budget only and downward travel stayed pinned at 0.20m.
     ps.limit_y = c.pos_limit_y;
+    ps.limit_y_down = c.pos_limit_y;
     ps.limit_z = c.pos_limit_z;
     ps.limit_z_back = c.pos_limit_z_back;
     // Position has no smoothing setting of its own - it rides the same two
