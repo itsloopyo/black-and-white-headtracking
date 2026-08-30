@@ -137,13 +137,21 @@ $manifestJson = ($manifest | ConvertTo-Json -Depth 10) -replace "`r`n", "`n"
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 [System.IO.File]::WriteAllText($manifestPath, $manifestJson, $utf8NoBom)
 
+# install.cmd's MOD_VERSION is what the install writes into the launcher's
+# state file, which is where the launcher looks to spot a stale install.
+$installCmdPath = Join-Path $repoRoot 'scripts\install.cmd'
+$installCmdText = Get-Content $installCmdPath -Raw
+if ($installCmdText -notmatch 'set "MOD_VERSION=[^"]+"') { throw "MOD_VERSION line not found in $installCmdPath" }
+$installCmdText = $installCmdText -replace 'set "MOD_VERSION=[^"]+"', "set `"MOD_VERSION=$newVersion`""
+Set-Content -Path $installCmdPath -Value $installCmdText -NoNewline
+
 # Build
 Write-Host "Building release..." -ForegroundColor Cyan
 & pixi run build-release
 if ($LASTEXITCODE -ne 0) { throw "pixi run build-release failed (exit $LASTEXITCODE)" }
 
 # Commit version + changelog
-$committed = Invoke-VersionCommit -Version $newVersion -Files @($versionHeader, $pixiPath, $cmakePath, $manifestPath, $changelogPath)
+$committed = Invoke-VersionCommit -Version $newVersion -Files @($versionHeader, $pixiPath, $cmakePath, $manifestPath, $installCmdPath, $changelogPath)
 if (-not $committed) { throw "No changes were staged for the release commit." }
 
 # Tag + push
