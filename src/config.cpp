@@ -9,6 +9,11 @@
 
 namespace headtracking {
 
+constexpr float kDefaultLocalSmoothing =
+    static_cast<float>(cameraunlock::math::kDefaultLocalSmoothing);
+constexpr float kDefaultRemoteSmoothing =
+    static_cast<float>(cameraunlock::math::kDefaultRemoteSmoothing);
+
 // The old value is deliberately NOT migrated into the new keys. The single
 // Smoothing value carried a hidden 0.15 floor, so the number in an existing
 // config does not mean what it used to: copying it across would hand a local
@@ -62,8 +67,8 @@ void Config::WriteDefault(const std::string& path) {
     w.WriteComment(" tracker on this PC, RemoteSmoothing for a device on the network (a");
     w.WriteComment(" phone over WiFi, say). 0.0 instant, up to 0.99 max. Nothing floors");
     w.WriteComment(" either, so 0.0 really is zero-latency tracking.");
-    w.WriteDouble("LocalSmoothing", 0.0);
-    w.WriteDouble("RemoteSmoothing", 0.15);
+    w.WriteDouble("LocalSmoothing", kDefaultLocalSmoothing);
+    w.WriteDouble("RemoteSmoothing", kDefaultRemoteSmoothing);
     w.WriteBlankLine();
     w.WriteSection("Deadzone");
     w.WriteDouble("Yaw", 0.0);
@@ -86,10 +91,10 @@ void Config::WriteDefault(const std::string& path) {
     w.WriteBool("InvertY", false);
     w.WriteBool("InvertZ", false);
     w.WriteComment(" Movement envelope in metres before world scaling");
-    w.WriteDouble("LimitX", 0.30);
-    w.WriteDouble("LimitY", 0.20);
-    w.WriteDouble("LimitZ", 0.40);
-    w.WriteDouble("LimitZBack", 0.10);
+    w.WriteDouble("LimitX", cameraunlock::PositionSettings{}.limit_x);
+    w.WriteDouble("LimitY", cameraunlock::PositionSettings{}.limit_y);
+    w.WriteDouble("LimitZ", cameraunlock::PositionSettings{}.limit_z);
+    w.WriteDouble("LimitZBack", cameraunlock::PositionSettings{}.limit_z_back);
     w.WriteBlankLine();
     w.WriteSection("Hotkeys");
     w.WriteHex("Toggle", 0x23);
@@ -169,8 +174,8 @@ Config Config::LoadOrCreateDefault() {
         }
         return clean;
     };
-    c.local_smoothing  = read_smoothing("LocalSmoothing",  0.0f);
-    c.remote_smoothing = read_smoothing("RemoteSmoothing", 0.15f);
+    c.local_smoothing  = read_smoothing("LocalSmoothing",  kDefaultLocalSmoothing);
+    c.remote_smoothing = read_smoothing("RemoteSmoothing", kDefaultRemoteSmoothing);
 
     WarnRetiredSmoothingKey(r, "Smoothing", "Amount");
     WarnRetiredSmoothingKey(r, "Position", "Smoothing");
@@ -201,10 +206,15 @@ Config Config::LoadOrCreateDefault() {
     auto limit_or = [](float v, float fallback) {
         return (std::isfinite(v) && v >= 0.0f) ? v : fallback;
     };
-    c.pos_limit_x      = limit_or(r.ReadFloat("Position", "LimitX",     0.30f), 0.30f);
-    c.pos_limit_y      = limit_or(r.ReadFloat("Position", "LimitY",     0.20f), 0.20f);
-    c.pos_limit_z      = limit_or(r.ReadFloat("Position", "LimitZ",     0.40f), 0.40f);
-    c.pos_limit_z_back = limit_or(r.ReadFloat("Position", "LimitZBack", 0.10f), 0.10f);
+    constexpr cameraunlock::PositionSettings kPositionDefaults{};
+    c.pos_limit_x      = limit_or(r.ReadFloat("Position", "LimitX",     kPositionDefaults.limit_x),
+                                  kPositionDefaults.limit_x);
+    c.pos_limit_y      = limit_or(r.ReadFloat("Position", "LimitY",     kPositionDefaults.limit_y),
+                                  kPositionDefaults.limit_y);
+    c.pos_limit_z      = limit_or(r.ReadFloat("Position", "LimitZ",     kPositionDefaults.limit_z),
+                                  kPositionDefaults.limit_z);
+    c.pos_limit_z_back = limit_or(r.ReadFloat("Position", "LimitZBack", kPositionDefaults.limit_z_back),
+                                  kPositionDefaults.limit_z_back);
 
     c.toggle_vk    = r.ReadHex("Hotkeys", "Toggle",   0x23);
     c.yaw_mode_vk  = r.ReadHex("Hotkeys", "YawMode",  0x22);

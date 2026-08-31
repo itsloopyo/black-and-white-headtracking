@@ -3,6 +3,9 @@
 #include <cstdint>
 #include <string>
 
+#include "cameraunlock/data/position_settings.h"
+#include "cameraunlock/math/smoothing_utils.h"
+
 namespace headtracking {
 
 struct Config {
@@ -21,8 +24,8 @@ struct Config {
     // machine is already steady, so local_smoothing is 0.0 and nothing floors
     // it; a phone on WiFi jitters over the network, which is what
     // remote_smoothing is for.
-    float local_smoothing = 0.0f;
-    float remote_smoothing = 0.15f;
+    float local_smoothing = static_cast<float>(cameraunlock::math::kDefaultLocalSmoothing);
+    float remote_smoothing = static_cast<float>(cameraunlock::math::kDefaultRemoteSmoothing);
 
     float deadzone_yaw = 0.0f;
     float deadzone_pitch = 0.0f;
@@ -39,10 +42,10 @@ struct Config {
     bool  pos_invert_z   = false;
     // Head-movement envelope in metres (clamped before world scaling). Z is
     // asymmetric: pos_limit_z = forward lean (generous), z_back = backward.
-    float pos_limit_x      = 0.30f;
-    float pos_limit_y      = 0.20f;
-    float pos_limit_z      = 0.40f;
-    float pos_limit_z_back = 0.10f;
+    float pos_limit_x      = cameraunlock::PositionSettings{}.limit_x;
+    float pos_limit_y      = cameraunlock::PositionSettings{}.limit_y;
+    float pos_limit_z      = cameraunlock::PositionSettings{}.limit_z;
+    float pos_limit_z_back = cameraunlock::PositionSettings{}.limit_z_back;
     // Engine world units per metre of head movement. This is the primary
     // tuning knob - raise it until lean feels responsive without nausea.
     float pos_world_scale  = 40.0f;
