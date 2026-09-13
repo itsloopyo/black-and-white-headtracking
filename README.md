@@ -10,6 +10,7 @@ An unofficial head tracking mod for Black & White that moves the camera with you
 
 - **Decoupled look and aim** - head tracking adds free look while your mouse cursor stays in place in the world
 - **6DOF positional tracking** - lean and peek with head position
+- **Works with any OpenTrack compatible tracker** - free options available for PC, iOS and Android
 
 ## Requirements
 
@@ -18,6 +19,13 @@ An unofficial head tracking mod for Black & White that moves the camera with you
 - Windows 10 or 11.
 
 ## Installation
+
+### Lopari
+
+Download [Lopari](https://lopari.app), choose **Black & White**, and click
+**Play with head tracking**.
+
+### Standalone Installer
 
 1. Download the latest installer ZIP from the [Releases](https://github.com/itsloopyo/black-and-white-headtracking/releases) page.
 2. Extract anywhere.
