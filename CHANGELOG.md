@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.1] - 2026-09-16
+
+### Added
+
+- rename the debug log and make it readable for bug reports
+
+### Fixed
+
+- record the cameraunlock-core commit that is actually built
+- mirror the vertical limit and restore the MIT grant
+- re-sync THIRD-PARTY-NOTICES.md before cutting the tag
+- rewrite install.cmd MOD_VERSION from the canonical version
+- resolve the adversarial review findings
+- name itsloopyo in the reproduced cameraunlock-core licence
+- preserve originals across shim upgrades and uninstall failures
+
 ## [0.2.0] - 2026-08-20
 
 ### Changed
