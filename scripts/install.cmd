@@ -17,6 +17,8 @@ set "MOD_INTERNAL_NAME=BlackAndWhiteHeadTracking"
 set "MOD_VERSION=0.2.0"
 set "STATE_FILE=.headtracking-state.json"
 set "FRAMEWORK_TYPE=None"
+set "SHIM_MARKER=black and white head tracking"
+set "SHIM_MARKER_ALT=runblack.exe not found next to launcher:"
 set "MOD_CONTROLS=Controls: End = Toggle tracking  ^|  Page Up = Cycle tracking mode  ^|  Page Down = Toggle yaw mode"
 :: --- END CONFIG BLOCK ---
 
