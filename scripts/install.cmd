@@ -19,6 +19,11 @@ set "STATE_FILE=.headtracking-state.json"
 set "FRAMEWORK_TYPE=None"
 set "SHIM_MARKER=black and white head tracking"
 set "SHIM_MARKER_ALT=runblack.exe not found next to launcher:"
+:: Files copied only when they are not already there, so an upgrade keeps
+:: whatever the user tuned. Listing an .ini in MOD_DLLS instead puts it through
+:: the unconditional copy and the SHIM_MARKER check, which resets every key on
+:: every update and then records the tuned file as the game original.
+set "MOD_SEED_FILES="
 set "MOD_CONTROLS=Controls: End = Toggle tracking  ^|  Page Up = Cycle tracking mode  ^|  Page Down = Toggle yaw mode"
 :: --- END CONFIG BLOCK ---
 
