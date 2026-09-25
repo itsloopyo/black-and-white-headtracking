@@ -33,6 +33,13 @@ set "ASSEMBLY_DLL="
 set "PATCH_MARKER="
 set "MANAGED_EXTRAS="
 set "ASI_LOADER_NAME=winmm.dll"
+:: Not used by this mod. Set blank so a value another mod's wrapper left in
+:: the same console does not reach the body.
+set "MOD_LEFTOVERS="
+set "ROOT_EXTRAS="
+set "USER_FOLDER_EXTRAS="
+set "ASI_SUBDIR="
+set "UE4_BINARIES_RELDIR="
 :: --- END CONFIG BLOCK ---
 
 :: Pin delayed expansion off before `%*` is expanded on the `call` below.
