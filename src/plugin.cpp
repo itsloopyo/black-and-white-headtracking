@@ -53,7 +53,13 @@ bool Plugin::Initialize() {
                "folder to read CameraUnlock.ini from; head tracking does not start");
         return false;
     }
-    m_owner.emplace(MakeConfigOwnerOptions(folder, cameraunlock::config::DefaultsFile::PerUser()));
+    cameraunlock::config::ConfigOwnerOptions<Config> options =
+        MakeConfigOwnerOptions(folder, cameraunlock::config::DefaultsFile::PerUser());
+    // The mod has no overlay, so the player's one-line messages (an import that did not run,
+    // Defaults.ini that cannot be read, a save that failed) go to the log, the only place they
+    // can be seen. The owner hands them to this sink and to nothing else.
+    options.status_sink = [](const std::string& message) { HT_LOG("[config] %s", message.c_str()); };
+    m_owner.emplace(std::move(options));
     const cameraunlock::config::ConfigLoadResult<Config> loaded = m_owner->Load();
     for (const std::string& line : loaded.log) HT_LOG("[config] %s", line.c_str());
     HT_LOG("[config] %s: %s", kConfigFileName, cameraunlock::config::ConfigLoadStatusName(loaded.status));
@@ -110,8 +116,7 @@ bool Plugin::Initialize() {
 void Plugin::LogSave(const char* what, const cameraunlock::config::ConfigSaveResult& saved) {
     for (const std::string& line : saved.log) HT_LOG("[config] %s", line.c_str());
     if (saved.status != cameraunlock::config::ConfigSaveStatus::Saved) {
-        HT_LOG("[config] %s not saved (%s): %s", what,
-               cameraunlock::config::ConfigSaveStatusName(saved.status), saved.reason.c_str());
+        HT_LOG("[config] %s not saved (%s)", what, cameraunlock::config::ConfigSaveStatusName(saved.status));
     }
 }
 
