@@ -5,10 +5,12 @@
 namespace headtracking {
 
 class Plugin;
+struct Config;
 
 class HotkeyHandler {
 public:
-    void Start(Plugin& plugin, int toggle_vk, int yaw_mode_vk, int mode_cycle_vk);
+    // Registers the three key lists from `config` on the poller and starts it.
+    void Start(Plugin& plugin, const Config& config);
     void Stop();
 
 private:

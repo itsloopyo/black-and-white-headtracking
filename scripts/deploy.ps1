@@ -53,13 +53,4 @@ foreach ($f in $files) {
     Write-Host "Deployed $f -> $GamePath" -ForegroundColor Green
 }
 
-$iniSrc = Join-Path $repoRoot 'config\HeadTracking.ini'
-$iniDst = Join-Path $GamePath 'HeadTracking.ini'
-if (-not (Test-Path $iniDst)) {
-    Copy-Item -Force $iniSrc $iniDst
-    Write-Host "Deployed default HeadTracking.ini" -ForegroundColor Green
-} else {
-    Write-Host "Preserving existing HeadTracking.ini" -ForegroundColor Yellow
-}
-
 Write-Host "`nLaunch via: $(Join-Path $GamePath 'bw-headtracking-launcher.exe')" -ForegroundColor Cyan

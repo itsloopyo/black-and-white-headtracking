@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <memory>
+#include <optional>
 
 #include "config.h"
 #include "cameraunlock/protocol/udp_receiver.h"
@@ -51,12 +52,18 @@ public:
     const Config& GetConfig() const { return m_config; }
 
 private:
+    // Logs a save's lines, and its reason when it wrote nothing. Save never retries: the session
+    // keeps the new value either way.
+    void LogSave(const char* what, const cameraunlock::config::ConfigSaveResult& saved);
+
     // The session itself re-reads the receiver's connection locality each
     // update and points both processors at LocalSmoothing or RemoteSmoothing.
     // This only reports the switch, so a bug report can say which of the two
     // values was actually in effect.
     void LogConnectionLocality();
 
+    // Built once in Initialize, before anything reads CameraUnlock.ini.
+    std::optional<cameraunlock::config::ConfigOwner<Config>> m_owner;
     Config m_config;
     std::atomic<bool> m_enabled{false};
 

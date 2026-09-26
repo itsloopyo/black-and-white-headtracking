@@ -1,149 +1,146 @@
 #include "config.h"
 
-#include <Windows.h>
-#include <filesystem>
+#include <limits>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "cameraunlock/config/ini_reader.h"
-#include "debug_log.h"
 #include "legacy_config/legacy_config.h"
+
+#include "cameraunlock/config/head_tracking_config_table.h"
+#include "cameraunlock/input/key_bindings.h"
+#include "cameraunlock/tracking/tracking_mode.h"
 
 namespace headtracking {
 
-constexpr float kDefaultLocalSmoothing =
-    static_cast<float>(cameraunlock::math::kDefaultLocalSmoothing);
-constexpr float kDefaultRemoteSmoothing =
-    static_cast<float>(cameraunlock::math::kDefaultRemoteSmoothing);
+namespace {
 
-std::string Config::IniPath() {
-    char buf[MAX_PATH] = {};
-    // GetModuleFileNameA does not guarantee null-termination on truncation, so
-    // bound the path by the returned length instead of reading the raw buffer.
-    DWORD len = GetModuleFileNameA(nullptr, buf, sizeof(buf));
-    if (len == 0 || len >= sizeof(buf)) return "HeadTracking.ini";
-    std::filesystem::path p(std::string(buf, len));
-    return (p.parent_path() / "HeadTracking.ini").string();
+using cameraunlock::config::DroppedValue;
+using cameraunlock::config::ImportResult;
+using cameraunlock::config::LegacyInput;
+using cameraunlock::config::LegacyPoseShaping;
+using cameraunlock::config::PoseShapingValue;
+using cameraunlock::input::KeyBinding;
+using cameraunlock::input::KeyModifiers;
+
+// A legacy hotkey code and the Ctrl+Shift chord v0.2.1 always registered beside it, as one key
+// list: the code's binding when it is a key code, then the chord.
+std::string KeyList(int vk, char letter, const char* key, std::vector<DroppedValue>& dropped) {
+    cameraunlock::config::LegacyVirtualKeyToBindings(vk, "Hotkeys", key, dropped);
+    std::vector<KeyBinding> bindings;
+    if (vk >= 0x01 && vk <= 0xFE) bindings.push_back({KeyModifiers::kNone, vk});
+    bindings.push_back({KeyModifiers::kCtrl | KeyModifiers::kShift, letter});
+    return cameraunlock::input::FormatKeyBindings(bindings);
 }
 
-void Config::WriteDefault(const std::string& path) {
-    cameraunlock::IniWriter w;
-    if (!w.Open(path)) {
-        HT_LOG("[config] failed to write default ini at %s", path.c_str());
-        return;
-    }
-    w.WriteComment(" black and white head tracking - default config");
-    w.WriteBlankLine();
-    w.WriteSection("Network");
-    w.WriteInt("Port", 4242);
-    w.WriteBool("EnableOnStartup", true);
-    w.WriteBlankLine();
-    w.WriteSection("Sensitivity");
-    w.WriteDouble("Yaw", 1.0);
-    w.WriteDouble("Pitch", 1.0);
-    w.WriteDouble("Roll", 1.0);
-    w.WriteBool("InvertYaw", false);
-    w.WriteBool("InvertPitch", false);
-    w.WriteBool("InvertRoll", false);
-    w.WriteBlankLine();
-    w.WriteSection("Smoothing");
-    w.WriteComment(" Covers rotation and position alike. Which value is used is picked per");
-    w.WriteComment(" connection from where the tracker sends from: LocalSmoothing for a");
-    w.WriteComment(" tracker on this PC, RemoteSmoothing for a device on the network (a");
-    w.WriteComment(" phone over WiFi, say). 0.0 instant, up to 0.99 max. Nothing floors");
-    w.WriteComment(" either, so 0.0 really is zero-latency tracking.");
-    w.WriteDouble("LocalSmoothing", kDefaultLocalSmoothing);
-    w.WriteDouble("RemoteSmoothing", kDefaultRemoteSmoothing);
-    w.WriteBlankLine();
-    w.WriteSection("Deadzone");
-    w.WriteDouble("Yaw", 0.0);
-    w.WriteDouble("Pitch", 0.0);
-    w.WriteDouble("Roll", 0.0);
-    w.WriteBlankLine();
-    w.WriteSection("Position");
-    w.WriteComment(" 6DOF head position, applied camera-local as the final camera shift");
-    w.WriteBool("Enabled", true);
-    w.WriteComment(" WorldScale = engine units per metre of head movement; main tuning knob");
-    w.WriteDouble("WorldScale", 40.0);
-    w.WriteComment(" ZoomReference = focal distance WorldScale is tuned at; 0 = auto-lock first zoom");
-    w.WriteDouble("ZoomReference", 0.0);
-    w.WriteComment(" ZoomScaleMax = clamp on zoom scaling [1/max, max]; lower if zoom-out too strong");
-    w.WriteDouble("ZoomScaleMax", 2.5);
-    w.WriteDouble("SensX", 1.0);
-    w.WriteDouble("SensY", 1.0);
-    w.WriteDouble("SensZ", 1.0);
-    w.WriteBool("InvertX", false);
-    w.WriteBool("InvertY", false);
-    w.WriteBool("InvertZ", false);
-    w.WriteComment(" Movement envelope in metres before world scaling");
-    w.WriteDouble("LimitX", cameraunlock::PositionSettings{}.limit_x);
-    w.WriteDouble("LimitY", cameraunlock::PositionSettings{}.limit_y);
-    w.WriteDouble("LimitZ", cameraunlock::PositionSettings{}.limit_z);
-    w.WriteDouble("LimitZBack", cameraunlock::PositionSettings{}.limit_z_back);
-    w.WriteBlankLine();
-    w.WriteSection("Hotkeys");
-    w.WriteHex("Toggle", 0x23);
-    w.WriteHex("YawMode", 0x22);
-    w.WriteComment(" Page Up: cycle 6DOF -> rotation-only -> position-only");
-    w.WriteHex("ModeCycle", 0x21);
-    w.WriteInt("DebounceMs", 200);
-    w.WriteBlankLine();
-    w.WriteSection("View");
-    w.WriteComment(" true = horizon-locked yaw (default), false = camera-local yaw");
-    w.WriteBool("WorldSpaceYaw", true);
-    w.WriteBlankLine();
-    w.WriteSection("Logging");
-    w.WriteComment(" One line a second for the first minute of tracked position, recording");
-    w.WriteComment(" head metres, clamped metres, engine offset and focal distance. Turn on");
-    w.WriteComment(" to tune WorldScale, or to read a focal value for ZoomReference.");
-    w.WriteBool("PositionTrace", false);
+ImportResult Import(const LegacyInput& input, Config& out) {
+    // v0.2.1 opened the file by the ANSI path GetModuleFileNameA gave it, which is the owner's
+    // ANSI form of the same path.
+    legacy::Config c;
+    const legacy::ReadStatus read = legacy::Read(input.ansi_path.c_str(), c);
+
+    std::vector<DroppedValue> dropped;
+    std::vector<PoseShapingValue> shaping;
+
+    out.udp_port = c.port;
+    out.enable_on_startup = c.enabled_on_startup;
+    out.world_space_yaw = c.world_space_yaw;
+
+    // [Position] Enabled chose only the startup mode: the cycle key reached every mode either
+    // way.
+    const cameraunlock::TrackingModeChannels mode = cameraunlock::EncodeTrackingMode(
+        c.pos_enabled ? cameraunlock::TrackingMode::RotationAndPosition
+                      : cameraunlock::TrackingMode::RotationOnly);
+    out.rotation_enabled = mode.rotation_enabled;
+    out.position_enabled = mode.position_enabled;
+
+    out.local_smoothing = c.local_smoothing;
+    out.position.local_smoothing = c.local_smoothing;
+    out.remote_smoothing = c.remote_smoothing;
+    out.position.remote_smoothing = c.remote_smoothing;
+
+    // The old file had one vertical limit, which the old runtime applied both ways.
+    out.position.limit_x = c.pos_limit_x;
+    out.position.limit_y = c.pos_limit_y;
+    out.position.limit_y_down = c.pos_limit_y;
+    out.position.limit_z = c.pos_limit_z;
+    out.position.limit_z_back = c.pos_limit_z_back;
+
+    out.pos_zoom_reference = c.pos_zoom_reference;
+    out.pos_zoom_scale_max = c.pos_zoom_scale_max;
+    out.log_position_trace = c.log_position_trace;
+
+    // Every sensitivity, inversion and deadzone shipped at identity, so nothing folds and a
+    // value the player changed is dropped. The unit scale shipped at the engine units per metre
+    // the camera path now applies itself.
+    LegacyPoseShaping(c.sens_yaw, 1.0f, "Sensitivity", "Yaw", shaping, dropped);
+    LegacyPoseShaping(c.sens_pitch, 1.0f, "Sensitivity", "Pitch", shaping, dropped);
+    LegacyPoseShaping(c.sens_roll, 1.0f, "Sensitivity", "Roll", shaping, dropped);
+    LegacyPoseShaping(c.invert_yaw, false, "Sensitivity", "InvertYaw", shaping, dropped);
+    LegacyPoseShaping(c.invert_pitch, false, "Sensitivity", "InvertPitch", shaping, dropped);
+    LegacyPoseShaping(c.invert_roll, false, "Sensitivity", "InvertRoll", shaping, dropped);
+    LegacyPoseShaping(c.deadzone_yaw, 0.0f, "Deadzone", "Yaw", shaping, dropped);
+    LegacyPoseShaping(c.deadzone_pitch, 0.0f, "Deadzone", "Pitch", shaping, dropped);
+    LegacyPoseShaping(c.deadzone_roll, 0.0f, "Deadzone", "Roll", shaping, dropped);
+    LegacyPoseShaping(c.pos_world_scale, kWorldUnitsPerMetre, "Position", "WorldScale", shaping, dropped);
+    LegacyPoseShaping(c.pos_sens_x, 1.0f, "Position", "SensX", shaping, dropped);
+    LegacyPoseShaping(c.pos_sens_y, 1.0f, "Position", "SensY", shaping, dropped);
+    LegacyPoseShaping(c.pos_sens_z, 1.0f, "Position", "SensZ", shaping, dropped);
+    LegacyPoseShaping(c.pos_invert_x, false, "Position", "InvertX", shaping, dropped);
+    LegacyPoseShaping(c.pos_invert_y, false, "Position", "InvertY", shaping, dropped);
+    LegacyPoseShaping(c.pos_invert_z, false, "Position", "InvertZ", shaping, dropped);
+
+    out.toggle_key_name = KeyList(c.toggle_vk, 'Y', "Toggle", dropped);
+    out.cycle_tracking_mode_key_name = KeyList(c.mode_cycle_vk, 'G', "ModeCycle", dropped);
+    out.yaw_mode_key_name = KeyList(c.yaw_mode_vk, 'H', "YawMode", dropped);
+
+    return read == legacy::ReadStatus::Absent ? ImportResult::Absent(std::move(dropped), std::move(shaping))
+                                              : ImportResult::Imported(std::move(dropped), std::move(shaping));
 }
 
-Config Config::LoadOrCreateDefault() {
-    const std::string path = IniPath();
-    if (!std::filesystem::exists(path)) {
-        WriteDefault(path);
-    }
+}  // namespace
 
-    legacy::Config l;
-    Config c;
-    if (legacy::Read(path.c_str(), l) == legacy::ReadStatus::Absent) {
-        HT_LOG("[config] could not open %s, using defaults", path.c_str());
-        return c;
-    }
+cameraunlock::config::ConfigTable<Config> MakeConfigTable() {
+    using cameraunlock::config::schema::Concept;
+    cameraunlock::config::ConfigTable<Config> table = cameraunlock::config::HeadTrackingConfigTable<Config>(
+        {Concept::UdpPort, Concept::EnableOnStartup, Concept::WorldSpaceYaw, Concept::RotationEnabled,
+         Concept::LocalSmoothing, Concept::RemoteSmoothing, Concept::PositionEnabled, Concept::PositionLimitX,
+         Concept::PositionLimitY, Concept::PositionLimitYDown, Concept::PositionLimitZ, Concept::PositionLimitZBack,
+         Concept::ToggleKey, Concept::CycleTrackingModeKey, Concept::YawModeKey});
+    table.Select(Concept::WorldSpaceYaw).Writable()
+        .Select(Concept::RotationEnabled).Writable()
+        .Select(Concept::PositionEnabled).Writable();
+    constexpr double kLargestFloat = std::numeric_limits<float>::max();
+    table.Local("Position", "ZoomReference", &Config::pos_zoom_reference, cameraunlock::config::FloatCodec(),
+                "The zoom at which leaning is not scaled, as the camera's distance to what it looks at\n"
+                "in the game's units. At other zooms leaning is scaled by the ratio of the two distances,\n"
+                "within ZoomScaleMax. 0 uses the first zoom the game shows. PositionTrace logs the distance.")
+        .Range(0.0, kLargestFloat);
+    table.Local("Position", "ZoomScaleMax", &Config::pos_zoom_scale_max, cameraunlock::config::FloatCodec(),
+                "The most the zoom scaling may multiply or divide leaning by. 1 turns it off.\n"
+                "Lower it if leaning moves the view too far when zoomed out.")
+        .Range(1.0, kLargestFloat);
+    table.Local("Logging", "PositionTrace", &Config::log_position_trace, cameraunlock::config::BoolCodec(),
+                "true: write the tracked head position, the view's offset and the zoom to HeadTracking.log\n"
+                "once a second, for the first minute of positional tracking.");
+    return table;
+}
 
-    c.port = l.port;
-    c.enabled_on_startup = l.enabled_on_startup;
-    c.sens_yaw = l.sens_yaw;
-    c.sens_pitch = l.sens_pitch;
-    c.sens_roll = l.sens_roll;
-    c.invert_yaw = l.invert_yaw;
-    c.invert_pitch = l.invert_pitch;
-    c.invert_roll = l.invert_roll;
-    c.local_smoothing = l.local_smoothing;
-    c.remote_smoothing = l.remote_smoothing;
-    c.deadzone_yaw = l.deadzone_yaw;
-    c.deadzone_pitch = l.deadzone_pitch;
-    c.deadzone_roll = l.deadzone_roll;
-    c.pos_enabled = l.pos_enabled;
-    c.pos_sens_x = l.pos_sens_x;
-    c.pos_sens_y = l.pos_sens_y;
-    c.pos_sens_z = l.pos_sens_z;
-    c.pos_invert_x = l.pos_invert_x;
-    c.pos_invert_y = l.pos_invert_y;
-    c.pos_invert_z = l.pos_invert_z;
-    c.pos_limit_x = l.pos_limit_x;
-    c.pos_limit_y = l.pos_limit_y;
-    c.pos_limit_z = l.pos_limit_z;
-    c.pos_limit_z_back = l.pos_limit_z_back;
-    c.pos_world_scale = l.pos_world_scale;
-    c.pos_zoom_reference = l.pos_zoom_reference;
-    c.pos_zoom_scale_max = l.pos_zoom_scale_max;
-    c.toggle_vk = l.toggle_vk;
-    c.yaw_mode_vk = l.yaw_mode_vk;
-    c.mode_cycle_vk = l.mode_cycle_vk;
-    c.debounce_ms = l.debounce_ms;
-    c.world_space_yaw = l.world_space_yaw;
-    c.log_position_trace = l.log_position_trace;
-    return c;
+cameraunlock::config::LegacyImport<Config> MakeLegacyImport() {
+    return {&Import, legacy::ReadKeys()};
+}
+
+cameraunlock::config::ConfigOwnerOptions<Config> MakeConfigOwnerOptions(const std::wstring& folder,
+                                                                        cameraunlock::config::DefaultsFile defaults) {
+    const auto wide = [](const char* name) { return std::wstring(name, name + std::char_traits<char>::length(name)); };
+    cameraunlock::config::ConfigOwnerOptions<Config> options;
+    options.path = folder + wide(kConfigFileName);
+    options.legacy_path = folder + wide(kLegacyConfigFileName);
+    options.table = MakeConfigTable();
+    options.import = MakeLegacyImport();
+    options.header.display_name = kConfigDisplayName;
+    options.defaults = std::move(defaults);
+    return options;
 }
 
 }  // namespace headtracking

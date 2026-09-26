@@ -1,44 +1,42 @@
 #include "hotkey_handler.h"
+#include "config.h"
 #include "plugin.h"
 #include "debug_log.h"
 
-#include "cameraunlock/input/chord_hotkeys.h"
+#include <stdexcept>
+#include <string>
+
+#include "cameraunlock/input/key_binding_registration.h"
+#include "cameraunlock/input/key_bindings.h"
 
 namespace headtracking {
 
 namespace {
-// Ctrl+Shift chord letters per the shared T/Y/U/G/H/J cluster convention:
-// Y = toggle tracking, G = mode cycle, H = yaw mode.
-constexpr int kVkY = 0x59;
-constexpr int kVkG = 0x47;
-constexpr int kVkH = 0x48;
+
+// The table read every list through the hotkey codec, so a list that does not parse here is a
+// bug, not a player's typo.
+void Register(cameraunlock::input::HotkeyPoller& poller, const std::string& list, const char* key,
+              std::function<void()> action) {
+    const cameraunlock::input::KeyBindingsParseResult parsed = cameraunlock::input::ParseKeyBindings(list);
+    if (!parsed.ok()) {
+        throw std::logic_error(std::string("[Hotkeys] ") + key + "=" + list + " does not parse: " + parsed.error);
+    }
+    cameraunlock::input::RegisterKeyBindings(poller, parsed.bindings, std::move(action));
+}
+
 }  // namespace
 
-void HotkeyHandler::Start(Plugin& plugin, int toggle_vk, int yaw_mode_vk,
-                          int mode_cycle_vk) {
-    using cameraunlock::input::ChordGuarded;
-
-    const auto toggle = [&plugin]() {
+void HotkeyHandler::Start(Plugin& plugin, const Config& config) {
+    Register(m_poller, config.toggle_key_name, "ToggleKey", [&plugin]() {
         plugin.ToggleEnabled();
         HT_LOG("[hotkey] toggle -> %s", plugin.IsEnabled() ? "on" : "off");
-    };
-    const auto yawMode = [&plugin]() {
-        plugin.ToggleYawMode();
-        HT_LOG("[hotkey] yaw mode -> %s",
-               plugin.IsWorldSpaceYaw() ? "world-space" : "camera-local");
-    };
-    const auto modeCycle = [&plugin]() {
+    });
+    Register(m_poller, config.cycle_tracking_mode_key_name, "CycleTrackingModeKey", [&plugin]() {
         plugin.CycleTrackingMode();
-        HT_LOG("[hotkey] mode cycle -> %s", plugin.TrackingModeName());
-    };
-
-    m_poller.SetToggleKey(toggle_vk, toggle);
-    m_poller.AddHotkey(yaw_mode_vk, yawMode);
-    m_poller.AddHotkey(mode_cycle_vk, modeCycle);
-
-    m_poller.AddHotkey(kVkY, ChordGuarded(toggle));
-    m_poller.AddHotkey(kVkH, ChordGuarded(yawMode));
-    m_poller.AddHotkey(kVkG, ChordGuarded(modeCycle));
+    });
+    Register(m_poller, config.yaw_mode_key_name, "YawModeKey", [&plugin]() {
+        plugin.ToggleYawMode();
+    });
 
     m_poller.Start(16);
 }

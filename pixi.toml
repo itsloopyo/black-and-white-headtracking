@@ -22,6 +22,13 @@ uninstall     = "scripts\\uninstall.cmd"
 test          = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/run-tests.ps1" }
 build-tests   = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/run-tests.ps1 -BuildOnly" }
 package       = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["build-release", "test"] }
+# Rewrite config/HeadTracking.ini, the committed copy of the CameraUnlock.ini the mod creates at
+# first launch, from the config table after a change to a row, a comment or a default, then
+# rewrite the per_game of launcher-manifest.json's config descriptor from it.
+render-config = { cmd = "build-tests/Debug/config_tests.exe --render-config config/HeadTracking.ini && node cameraunlock-core/scripts/encode-seed.mjs", depends-on = ["build-tests"] }
+# Checks the newest installer and Nexus ZIPs in release/ against core's manifest and config
+# rules. Run it after package.
+validate-manifest = { cmd = "node cameraunlock-core/scripts/validate-manifest.mjs" }
 release       = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/release.ps1" }
 update-deps   = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/update-deps.ps1" }
 clean         = { cmd = "powershell -Command \"if (Test-Path 'build') { Remove-Item 'build' -Recurse -Force }; Write-Host 'Build artifacts cleaned' -ForegroundColor Green\"" }
@@ -32,3 +39,6 @@ ghidra-script = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/ghidra
 # >=4.1 for the "Visual Studio 18 2026" generator (CI runners dropped VS 2022);
 # upper bound keeps the locked build >2 weeks old.
 cmake = ">=4.1,<4.4.1"
+# Runs the migrated-config lint in `test`, render-config's encode-seed.mjs and core's
+# validate-manifest, pinned to the build cameraunlock-core's own lock resolved.
+nodejs = "==26.5.0"

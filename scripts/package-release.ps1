@@ -24,8 +24,6 @@ foreach ($f in $modFiles) {
         throw "Missing build output: $(Join-Path $binDir $f)"
     }
 }
-$iniSrc = Join-Path $repoRoot 'config\HeadTracking.ini'
-if (-not (Test-Path $iniSrc)) { throw "Missing config/HeadTracking.ini" }
 
 if (-not (Test-Path $outDir)) { New-Item -ItemType Directory -Path $outDir | Out-Null }
 
@@ -39,7 +37,6 @@ New-Item -ItemType Directory -Path $pluginsDir | Out-Null
 foreach ($f in $modFiles) {
     Copy-Item (Join-Path $binDir $f) $pluginsDir
 }
-Copy-Item $iniSrc $pluginsDir
 
 Copy-Item (Join-Path $repoRoot 'scripts\install.cmd')   $installerStage
 Copy-Item (Join-Path $repoRoot 'scripts\uninstall.cmd') $installerStage
@@ -76,7 +73,6 @@ New-Item -ItemType Directory -Path $nexusStage | Out-Null
 foreach ($f in $modFiles) {
     Copy-Item (Join-Path $binDir $f) $nexusStage
 }
-Copy-Item $iniSrc $nexusStage
 
 # MinHook (BSD-2-Clause) and glm / cameraunlock-core (MIT) are statically linked
 # into HeadTracking.dll. All three licenses require their notice to travel with a
