@@ -1,0 +1,45 @@
+# What the config differential test compiles, and where each file came from.
+# scripts/run-tests.ps1 fails when a listed file no longer has its hash.
+#
+# Newest published build: v0.2.1 (5a54374), pinned to cameraunlock-core c480d8a. No build
+# seeded a config through launcher-manifest.json and no dev pre-release was published.
+#
+# Oracle: copies of 'git show v0.2.1:<path>' and of cameraunlock-core
+# 'git show c480d8a:cpp/<path>'.
+4b80dbfed082b797b8b724749d99cc382b1f98126fc2fa7a2e3044fc2e6d456b  tests/config_differential/oracle/src/config.cpp  v0.2.1:src/config.cpp
+cf94883ce5e50ed7040aba8f4518213089a70cde33316bb4fa515cce26e1e1dd  tests/config_differential/oracle/src/config.h  v0.2.1:src/config.h
+a1770470a6c279c6d81adc59887d6a87f08285093839d9dde94b0287054b89a7  tests/config_differential/oracle/src/debug_log.h  v0.2.1:src/debug_log.h
+a792355ef395728f0e0992f664940ebdb8621d67096fc7a65a4e1b6002b6964a  tests/config_differential/oracle/src/hotkey_handler.cpp  v0.2.1:src/hotkey_handler.cpp
+61546976a4230ffdc890c4203f6f8511bb56adcb623124b3e8d9507d614e3dc5  tests/config_differential/oracle/src/hotkey_handler.h  v0.2.1:src/hotkey_handler.h
+a7ffb44210ff59672fa97e8e5feaa2cb3e81938fcc0334a384c68bc371b3857a  tests/config_differential/oracle/core/include/cameraunlock/config/ini_reader.h  core c480d8a:cpp/include/cameraunlock/config/ini_reader.h
+b24dceb8e25475aebc5a468a5c7362a4a4e64204d183d1408525345f32f547f5  tests/config_differential/oracle/core/include/cameraunlock/data/position_settings.h  core c480d8a:cpp/include/cameraunlock/data/position_settings.h
+de519d9b49c949353c550b9dda347380cbbf131f6768378f8a9f5fd97678fea8  tests/config_differential/oracle/core/include/cameraunlock/input/chord_hotkeys.h  core c480d8a:cpp/include/cameraunlock/input/chord_hotkeys.h
+43bdd2ef8554c78e5f440333463750c13b95110fe672b0b6e273244df9e7d169  tests/config_differential/oracle/core/include/cameraunlock/logging/file_log.h  core c480d8a:cpp/include/cameraunlock/logging/file_log.h
+d7a905270933e3cb0c4c361d29d3fd701655498cbcd1875ea79d180468bdbe6a  tests/config_differential/oracle/core/include/cameraunlock/math/angle_utils.h  core c480d8a:cpp/include/cameraunlock/math/angle_utils.h
+fc2146f8c585e5f610c7234e302f59de4945679cfa28ff479ca47477ec073f22  tests/config_differential/oracle/core/include/cameraunlock/math/smoothing_utils.h  core c480d8a:cpp/include/cameraunlock/math/smoothing_utils.h
+e01515c2656aaf533bae4350dc45b702c3e3d4043935743dcc9bd5ea581fbe1c  tests/config_differential/oracle/core/src/config/ini_reader.cpp  core c480d8a:cpp/src/config/ini_reader.cpp
+73c53c2baa06bbfebe8211f62678aa2b60cb95f604743d3686951ba56b87ea47  tests/config_differential/oracle/core/src/logging/file_log.cpp  core c480d8a:cpp/src/logging/file_log.cpp
+#
+# The first-run output of every published build, extracted once by building its
+# Config::WriteDefault with the core IniWriter at its pin. v0.1.0 (core 9aa854b), v0.1.2
+# (eb4b56f) and v0.1.4 (ede54d8) share config.cpp and IniWriter, so they wrote one file.
+dfc8de608dcfebc03f948e2f7d5d8df90221774e844cd1a0346cbdc0f776fc33  tests/config_differential/data/v0.1.x-first-run.ini  v0.1.0, v0.1.2, v0.1.4 first run
+e63ab9b094f205389d5a1a4c312ad6b3623a2306d0ea4876f6cb230ab404d72e  tests/config_differential/data/v0.2.0-first-run.ini  v0.2.0 first run (core 3465659)
+468befc15fbff249f338101ae7463d54588a0f2450c8db0193f10372cbe5b4be  tests/config_differential/data/v0.2.1-first-run.ini  v0.2.1 first run (core c480d8a)
+#
+# Every committed version of config/HeadTracking.ini up to v0.2.1, which the installer and
+# Nexus ZIPs carried: 7fa312c in v0.1.0 to v0.1.4, 09b59c7 in v0.2.0, f2c72cc in v0.2.1.
+50a1c45536b1ef82286bbad5f4de5f167415bdfb06c8b4a3e57cd7a013062ceb  tests/config_differential/data/shipped-7fa312c.ini  7fa312c:config/HeadTracking.ini
+c07161d1e10323d20b300a9faca7695251008b09703f4f76579466be3c523463  tests/config_differential/data/shipped-09b59c7.ini  09b59c7:config/HeadTracking.ini
+2a6bea689a26d71345d416f7af7ddfdf2a377d10c4e9400d90df99cb9f4ed6bb  tests/config_differential/data/shipped-be7c8a6.ini  be7c8a6:config/HeadTracking.ini
+09b7323f5baf40c7ca3d15d7467c44b0f2c7ba2c4af075286548ccdd5bb5635f  tests/config_differential/data/shipped-f2c72cc.ini  f2c72cc:config/HeadTracking.ini
+#
+# The frozen import. Never edited once the conversion landed.
+c2998a732e655ff1523cce67eaa49095c2007f02bf5719fbef6b064d93d664c0  src/legacy_config/legacy_config.h  frozen import
+9e9c28c1fa6242fb8b6dfb4c337f7301e6109ce892f1d45a923132ff8cbd29dc  src/legacy_config/legacy_config.cpp  frozen import
+#
+# The core sources the import compiles. IniReader is frozen in core and its two files equal
+# c480d8a's, so the import reads a file with the helpers v0.2.1 had. The default values the
+# v0.2.1 Config took from core are written out in the frozen import.
+a7ffb44210ff59672fa97e8e5feaa2cb3e81938fcc0334a384c68bc371b3857a  cameraunlock-core/cpp/include/cameraunlock/config/ini_reader.h  core c480d8a:cpp/include/cameraunlock/config/ini_reader.h
+e01515c2656aaf533bae4350dc45b702c3e3d4043935743dcc9bd5ea581fbe1c  cameraunlock-core/cpp/src/config/ini_reader.cpp  core c480d8a:cpp/src/config/ini_reader.cpp

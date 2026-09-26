@@ -57,6 +57,7 @@ add_library(HeadTracking SHARED
     src/main.cpp
     src/plugin.cpp
     src/config.cpp
+    src/legacy_config/legacy_config.cpp
     src/camera_hook.cpp
     src/water_surface.cpp
     src/hotkey_handler.cpp
@@ -95,14 +96,66 @@ if(MSVC)
 endif()
 
 # ---------- host-side unit tests (no engine / D3D dependency) ----------
+# Built in their own tree by scripts/run-tests.ps1 (pixi run test), never in build/.
 if(HEADTRACKING_BUILD_TESTS)
+    enable_testing()
+
     add_executable(water_shading_test test/water_shading_test.cpp)
     target_include_directories(water_shading_test PRIVATE src)
     if(MSVC)
         target_compile_options(water_shading_test PRIVATE /W4 /permissive-)
     endif()
-    enable_testing()
     add_test(NAME water_shading_test COMMAND water_shading_test)
+
+    # The config differential test. The oracle is v0.2.1's reader and hotkey registration with
+    # the core sources they compiled, copied verbatim into tests/config_differential/oracle. It
+    # is two libraries because HotkeyHandler::Start has to run on oracle_fake's recording poller
+    # and counting Plugin; each renames the two namespaces its own way, so neither collides with
+    # the other or with the current core.
+    set(BW_ORACLE_DIR ${CMAKE_SOURCE_DIR}/tests/config_differential/oracle)
+    add_library(bw_config_oracle STATIC
+        ${BW_ORACLE_DIR}/src/config.cpp
+        ${BW_ORACLE_DIR}/core/src/config/ini_reader.cpp
+        ${BW_ORACLE_DIR}/core/src/logging/file_log.cpp
+        tests/config_differential/oracle_config_adapter.cpp
+    )
+    target_include_directories(bw_config_oracle PRIVATE
+        ${BW_ORACLE_DIR}/src
+        ${BW_ORACLE_DIR}/core/include
+        ${CMAKE_SOURCE_DIR}/tests/config_differential)
+    target_compile_definitions(bw_config_oracle PRIVATE
+        cameraunlock=bw_oracle_core
+        headtracking=bw_oracle)
+
+    add_library(bw_hotkeys_oracle STATIC
+        ${BW_ORACLE_DIR}/src/hotkey_handler.cpp
+        ${BW_ORACLE_DIR}/core/src/logging/file_log.cpp
+        tests/config_differential/oracle_hotkeys_adapter.cpp
+    )
+    target_include_directories(bw_hotkeys_oracle PRIVATE
+        ${CMAKE_SOURCE_DIR}/tests/config_differential/oracle_fake
+        ${BW_ORACLE_DIR}/src
+        ${BW_ORACLE_DIR}/core/include
+        ${CMAKE_SOURCE_DIR}/tests/config_differential)
+    target_compile_definitions(bw_hotkeys_oracle PRIVATE
+        cameraunlock=bw_oracle_hk_core
+        headtracking=bw_oracle_hk)
+
+    add_executable(config_differential_tests
+        tests/config_differential/differential_tests.cpp
+        src/legacy_config/legacy_config.cpp
+    )
+    target_include_directories(config_differential_tests PRIVATE
+        src
+        tests/config_differential)
+    target_compile_definitions(config_differential_tests PRIVATE
+        BW_DIFFERENTIAL_DATA="${CMAKE_SOURCE_DIR}/tests/config_differential/data")
+    target_link_libraries(config_differential_tests PRIVATE
+        cameraunlock bw_config_oracle bw_hotkeys_oracle)
+    if(MSVC)
+        target_compile_options(config_differential_tests PRIVATE /W4 /permissive-)
+    endif()
+    add_test(NAME config_differential_tests COMMAND config_differential_tests)
 endif()
 
 message(STATUS "")

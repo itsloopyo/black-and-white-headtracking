@@ -1,5 +1,6 @@
 # Build output
 build/
+build-tests/
 bin/
 obj/
 dist/

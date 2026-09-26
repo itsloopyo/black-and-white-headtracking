@@ -18,11 +18,14 @@ build         = { cmd = "cmake --build build --config Debug",   depends-on = ["s
 build-release = { cmd = "cmake --build build --config Release", depends-on = ["setup"] }
 install       = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 Release", depends-on = ["build-release"] }
 uninstall     = "scripts\\uninstall.cmd"
-package       = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["build-release"] }
+# The host-side unit tests and the config differential test, in their own tree (build-tests/).
+test          = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/run-tests.ps1" }
+build-tests   = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/run-tests.ps1 -BuildOnly" }
+package       = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["build-release", "test"] }
 release       = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/release.ps1" }
 update-deps   = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/update-deps.ps1" }
 clean         = { cmd = "powershell -Command \"if (Test-Path 'build') { Remove-Item 'build' -Recurse -Force }; Write-Host 'Build artifacts cleaned' -ForegroundColor Green\"" }
-clean-all     = { cmd = "powershell -Command \"if (Test-Path 'build') { Remove-Item 'build' -Recurse -Force }; if (Test-Path 'release') { Remove-Item 'release' -Recurse -Force }\"" }
+clean-all     = { cmd = "powershell -Command \"if (Test-Path 'build') { Remove-Item 'build' -Recurse -Force }; if (Test-Path 'build-tests') { Remove-Item 'build-tests' -Recurse -Force }; if (Test-Path 'release') { Remove-Item 'release' -Recurse -Force }\"" }
 ghidra-script = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/ghidra-headless.ps1" }
 
 [dependencies]
