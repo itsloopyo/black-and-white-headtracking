@@ -68,6 +68,14 @@ if (-not (Test-SemanticVersion -Version $newVersion)) {
 }
 Write-Host "Releasing v$newVersion (current: v$currentVersion)" -ForegroundColor Cyan
 
+# validate-manifest holds config.canonical_since to the version on a built ZIP only, and neither
+# packaging nor the release workflow runs it, so a lower version would ship this build with a
+# descriptor naming a version later than itself.
+$canonicalSince = (Get-Content (Join-Path $repoRoot 'launcher-manifest.json') -Raw | ConvertFrom-Json).config.canonical_since
+if ([version]$newVersion -lt [version]$canonicalSince) {
+    throw "v$newVersion is below launcher-manifest.json's config.canonical_since ($canonicalSince), the first version that reads CameraUnlock.ini. Release $canonicalSince or later."
+}
+
 $branch = (& git rev-parse --abbrev-ref HEAD).Trim()
 if ($branch -ne 'main') { throw "Must release from 'main' branch (currently on '$branch')." }
 
