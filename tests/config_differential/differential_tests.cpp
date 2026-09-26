@@ -34,7 +34,7 @@
 // Inputs: no file, an empty file, the first-run output of every published build (v0.1.0,
 // v0.1.2 and v0.1.4 wrote the same file), every committed version of config/HeadTracking.ini up
 // to v0.2.1 (the installer and Nexus ZIPs carried it; no build seeded one through the launcher),
-// and core's corpus over v0.2.1's first-run output.
+// and core's corpus over v0.2.1's first-run output and over the file v0.2.1 shipped.
 
 #include "config.h"
 #include "legacy_config/legacy_config.h"
@@ -815,8 +815,10 @@ std::vector<Input> Inputs() {
                              "shipped-f2c72cc.ini"}) {
         inputs.push_back({name, Data(name)});
     }
-    for (auto& m : GenerateIniMutations(Data("v0.2.1-first-run.ini"), legacy::ReadKeys(), MutationKeys())) {
-        inputs.push_back({"corpus: " + m.name, std::move(m.bytes)});
+    for (const char* base : {"v0.2.1-first-run.ini", "shipped-f2c72cc.ini"}) {
+        for (auto& m : GenerateIniMutations(Data(base), legacy::ReadKeys(), MutationKeys())) {
+            inputs.push_back({std::string("corpus over ") + base + ": " + m.name, std::move(m.bytes)});
+        }
     }
     return inputs;
 }
