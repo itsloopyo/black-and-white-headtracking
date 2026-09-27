@@ -11,8 +11,10 @@
 ### Changed
 
 - Settings move to `CameraUnlock.ini`, next to `runblack.exe`. Earlier versions of the mod kept these settings in `HeadTracking.ini`, in the same folder. The first time this version starts and finds no `CameraUnlock.ini`, it reads your settings from `HeadTracking.ini` and writes them into `CameraUnlock.ini`. It never changes `HeadTracking.ini`, and does not read it again while `CameraUnlock.ini` exists.
-- A setting that the defaults the README shows set to `default` is written as `default` when you never changed it from the default earlier versions used, because `HeadTracking.ini` does not hold it or holds that default. It then follows `Defaults.ini`, so it takes the value `Defaults.ini` gives it, or the built-in value where `Defaults.ini` gives none, which can differ from the default earlier versions used. A setting you changed is written with the value imported for it, or as `default` where that value equals its default at that start.
+- A setting that the defaults the README shows set to `default` is written as `default` when you never changed it from the default of the earlier version that wrote `HeadTracking.ini`, as far as the file shows which version that was, because `HeadTracking.ini` does not hold it or holds that default. It then follows `Defaults.ini`, so it takes the value `Defaults.ini` gives it, or the built-in value where `Defaults.ini` gives none, which can differ from the default earlier versions used. A setting you changed is written with the value imported for it, or as `default` where that value equals its default at that start.
 - `RotationEnabled` and `PositionEnabled` are one setting here, the tracking mode, so both are written as `default` or neither is.
+- A number in `HeadTracking.ini` that is not a number the mod can use (`nan`, `inf`) is written as `default` where the defaults the README shows set that setting to `default`, and as the built-in value elsewhere.
+- A number in `HeadTracking.ini` outside the range a setting takes is brought to the nearest end of that range, and the log says so: a position limit above 10 is written as 10.
 - Comments, and keys the mod never read, are not carried over. Nor are these, where your old file had them:
   - A sensitivity, scale, deadzone, response curve or axis inversion you changed from its default. Set these in your tracker instead.
   - A hotkey set to Ctrl, Shift or Alt on its own. That key goes down before the key of any chord made with it, so the hotkey is left unbound, and it keeps its Ctrl+Shift chord where it has one.
@@ -25,7 +27,6 @@
 - The tracking mode that Page Up or Ctrl+Shift+G selects, and the yaw mode that Page Down or Ctrl+Shift+H selects, are now saved to `CameraUnlock.ini` as soon as you change them and come back at the next start. End still changes the current session only.
 - `uninstall.cmd` keeps `CameraUnlock.ini` and `HeadTracking.ini`, so your settings survive a reinstall. Earlier versions deleted `HeadTracking.ini` on uninstall.
 - The installer and Nexus ZIPs no longer carry `HeadTracking.ini`. The mod creates `CameraUnlock.ini` when it first starts.
-- A `HeadTracking.ini` whose position limits include one above 10 is not imported, because `CameraUnlock.ini` cannot hold that value. The mod runs on the file's values, except that a sensitivity, scale, deadzone or inversion you changed is not applied. It creates no `CameraUnlock.ini`, saves nothing that session, and says so in the log at every start until the value is fixed.
 
 ### Removed
 

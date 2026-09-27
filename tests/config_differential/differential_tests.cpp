@@ -17,8 +17,8 @@
 // record as dropped. A sensitivity, inversion, deadzone, WorldScale, ZoomReference or
 // ZoomScaleMax the player set away from its shipped value is dropped (pose_shaping), a hotkey code
 // outside 0x01-0xFE imports as unbound (N1), and so does one on a Ctrl, Shift or Alt key alone
-// (N3), each keeping its Ctrl+Shift chord. A value the canonical row cannot hold has no approved rule, so the owner defers
-// that import and the session runs on what the import gave (kUnrepresentable). The hotkeys fire
+// (N3), each keeping its Ctrl+Shift chord. A [Position] limit above the canonical rows' 10, which
+// v0.2.1 took, imports as 10 (N4) and stays the player's. The hotkeys fire
 // as the fleet's key lists fire (kFleetHotkeyRule): exactly as v0.2.1 fired them, except for a
 // press made while Ctrl and Shift are both held.
 //
@@ -93,12 +93,7 @@ const char* const kFleetHotkeyRule =
     "a hotkey code no longer fires while Ctrl and Shift are both held, and a press fires its action once";
 
 // v0.2.1 read the four [Position] limits with no upper bound, and the canonical rows take 0 to 10
-// metres. Core has no rule for a value outside a concept's range, so the owner defers such a
-// file: it stays as it is, the session runs on what the import read, and nothing is saved.
-const char* const kUnrepresentable =
-    "[Position] LimitX, LimitY, LimitZ or LimitZBack above 10, which the canonical rows cannot hold, so the "
-    "import defers";
-
+// metres, so a larger one is clamped to 10 (N4).
 constexpr float kMaxCanonicalLimit = 10.0f;
 
 constexpr const char* kFileName = "HeadTracking.ini";
@@ -555,7 +550,6 @@ struct Tally {
     struct Run {
         int created = 0;
         int imported = 0;
-        int deferred = 0;
         // Migrated files holding at least one default row.
         int with_default_rows = 0;
         // Migrated files that differ from the committed file.
@@ -564,6 +558,7 @@ struct Tally {
     int with_pose_shaping_dropped = 0;
     int with_key_code_dropped = 0;
     int with_modifier_key_dropped = 0;
+    int with_out_of_range_clamped = 0;
     // Inputs that change a row from v0.2.1's default, and those among them that change the mode.
     int touched = 0;
     int mode_touched = 0;
@@ -646,7 +641,8 @@ bool IsUnedited(const std::string& name) {
 
 // Every pose-shaping value the frozen reader read is listed in its place, folded where it holds
 // the value v0.2.1 shipped and dropped as PoseShaping where it does not; a hotkey code outside
-// 0x01-0xFE is dropped as KeyCodeOutOfRange; and nothing is dropped by any other rule.
+// 0x01-0xFE is dropped as KeyCodeOutOfRange; a limit above 10 as NumberOutOfRange; and nothing is
+// dropped by any other rule.
 void CheckDrops(const std::string& name, const legacy::Config& l, const ImportResult& imported, Tally& tally) {
     const legacy::Config shipped;
     struct Read {
@@ -705,8 +701,19 @@ void CheckDrops(const std::string& name, const legacy::Config& l, const ImportRe
     if (anyCode) ++tally.with_key_code_dropped;
     if (anyModifier) ++tally.with_modifier_key_dropped;
 
+    const std::pair<const char*, float> limits[] = {{"LimitX", l.pos_limit_x}, {"LimitY", l.pos_limit_y},
+                                                    {"LimitZ", l.pos_limit_z}, {"LimitZBack", l.pos_limit_z_back}};
+    bool anyClamped = false;
+    for (const auto& [key, value] : limits) {
+        const bool listed = FindDrop(imported.dropped, DropRule::NumberOutOfRange, "Position", key) != nullptr;
+        Check(listed == (value > kMaxCanonicalLimit), name + ": [Position] " + key + " clamped does not match its value");
+        if (listed) anyClamped = true;
+    }
+    if (anyClamped) ++tally.with_out_of_range_clamped;
+
     for (const DroppedValue& d : imported.dropped) {
-        Check(d.rule == DropRule::PoseShaping || d.rule == DropRule::KeyCodeOutOfRange || d.rule == DropRule::ModifierKey,
+        Check(d.rule == DropRule::PoseShaping || d.rule == DropRule::KeyCodeOutOfRange || d.rule == DropRule::ModifierKey ||
+                  d.rule == DropRule::NumberOutOfRange,
               name + ": the import drops [" + d.section + "] " + d.key + " by a rule this map never applies");
     }
 }
@@ -756,9 +763,13 @@ std::vector<std::string> StartupDifferences(const legacy::Config& l, const Confi
     return d;
 }
 
-bool Unrepresentable(const legacy::Config& l) {
-    return l.pos_limit_x > kMaxCanonicalLimit || l.pos_limit_y > kMaxCanonicalLimit ||
-           l.pos_limit_z > kMaxCanonicalLimit || l.pos_limit_z_back > kMaxCanonicalLimit;
+// The frozen reader's values with each limit above 10 at 10, as N4 imports it.
+legacy::Config Clamped(legacy::Config l) {
+    l.pos_limit_x = std::min(l.pos_limit_x, kMaxCanonicalLimit);
+    l.pos_limit_y = std::min(l.pos_limit_y, kMaxCanonicalLimit);
+    l.pos_limit_z = std::min(l.pos_limit_z, kMaxCanonicalLimit);
+    l.pos_limit_z_back = std::min(l.pos_limit_z_back, kMaxCanonicalLimit);
+    return l;
 }
 
 // Every field the table binds, as the canonical renderer writes it, so two Configs compare whole.
@@ -796,9 +807,9 @@ void Comparison2(Scratch& scratch, const Input& input, const ImportRun& import, 
 
     // Over the changed Defaults.ini the rows the import left to it take its values.
     const legacy::Config expected =
-        builtin || !mapped ? import.config
-                           : OverAlteredDefaults(import.config, std::set<Concept>(mapped->follows_defaults_ini.begin(),
-                                                                                  mapped->follows_defaults_ini.end()));
+        builtin || !mapped ? Clamped(import.config)
+                           : OverAlteredDefaults(Clamped(import.config), std::set<Concept>(mapped->follows_defaults_ini.begin(),
+                                                                                           mapped->follows_defaults_ini.end()));
 
     if (!input.bytes) {
         // A fresh install, which follows Defaults.ini.
@@ -815,20 +826,9 @@ void Comparison2(Scratch& scratch, const Input& input, const ImportRun& import, 
 
     if (builtin) CheckDrops(name, import.config, *mapped, tally);
 
-    // Imported or deferred, the session runs on the settings the load hands back.
     {
         const std::vector<std::string> d = StartupDifferences(expected, loaded.config, tally);
         Check(d.empty(), name + ": comparison 2: " + Join(d));
-    }
-
-    if (Unrepresentable(import.config)) {
-        ++run.deferred;
-        Check(loaded.status == ConfigLoadStatus::Deferred,
-              name + ": " + kUnrepresentable + ", but the load is " + cfg::ConfigLoadStatusName(loaded.status));
-        Check(after == Listing{{kFileName, *input.bytes}}, name + ": a deferred import created CameraUnlock.ini or another file");
-        Check(loaded.reason.find("cannot be converted") != std::string::npos,
-              name + ": the player is not told which value stops the import: " + loaded.reason);
-        return;
     }
 
     ++run.imported;
@@ -933,6 +933,10 @@ std::vector<Input> Inputs() {
                              "YawMode=0xA5"}) {
         inputs.push_back({std::string("modifier key: ") + line, std::string("[Hotkeys]\r\n") + line + "\r\n"});
     }
+    // N4: a limit above the rows' 10, and 10 itself, which is not clamped.
+    for (const char* line : {"LimitX=25", "LimitY=12.5", "LimitZ=10", "LimitZBack=1000"}) {
+        inputs.push_back({std::string("limit: ") + line, std::string("[Position]\r\n") + line + "\r\n"});
+    }
     for (const char* base : {"v0.2.1-first-run.ini", "shipped-f2c72cc.ini"}) {
         for (auto& m : GenerateIniMutations(Data(base), legacy::ReadKeys(), MutationKeys())) {
             inputs.push_back({std::string("corpus over ") + base + ": " + m.name, std::move(m.bytes)});
@@ -1011,9 +1015,8 @@ int main() {
         for (const auto& [over, run] : {std::pair<const char*, const Tally::Run*>{"at the built-in values", &tally.builtin},
                                         std::pair<const char*, const Tally::Run*>{"changed", &tally.altered}}) {
             std::printf("  over Defaults.ini %s: %d created, %d imported (%d holding a default row, %d differing from "
-                        "the committed file), %d deferred\n",
-                        over, run->created, run->imported, run->with_default_rows, run->with_values, run->deferred);
-            Check(run->deferred > 0, std::string("no input is deferred over ") + over);
+                        "the committed file)\n",
+                        over, run->created, run->imported, run->with_default_rows, run->with_values);
             Check(run->with_default_rows > 0, std::string("no import writes default over ") + over);
             Check(run->with_values > 0, std::string("no import writes a value over ") + over);
         }
@@ -1026,10 +1029,11 @@ int main() {
                     tally.mode_touched);
         std::printf("  %d loads whose hotkeys differ from v0.2.1 under Ctrl+Shift: %s\n", tally.with_hotkey_rule_difference,
                     kFleetHotkeyRule);
-        std::printf("  deferred: %s\n", kUnrepresentable);
+        std::printf("  %d with a [Position] limit above 10 clamped (N4)\n", tally.with_out_of_range_clamped);
         Check(tally.with_pose_shaping_dropped > 0, "no input drops a changed pose-shaping value");
         Check(tally.with_key_code_dropped > 0, "no input drops an out-of-range hotkey code");
         Check(tally.with_modifier_key_dropped > 0, "no input drops a hotkey on a modifier key");
+        Check(tally.with_out_of_range_clamped > 0, "no input clamps a limit above 10");
         Check(tally.touched > 0 && tally.mode_touched > 0,
               "no input changes a row, the tracking mode among them, which then does not follow Defaults.ini");
         Check(tally.with_hotkey_rule_difference > 0, "no input shows the fleet hotkey rule");

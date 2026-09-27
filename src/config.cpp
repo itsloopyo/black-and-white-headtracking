@@ -16,6 +16,7 @@ namespace {
 
 using cameraunlock::config::DroppedValue;
 using cameraunlock::config::ImportResult;
+using cameraunlock::config::LegacyClampToRange;
 using cameraunlock::config::LegacyFollowsDefaultsIni;
 using cameraunlock::config::LegacyInput;
 using cameraunlock::config::LegacyPoseShaping;
@@ -60,12 +61,19 @@ ImportResult Import(const LegacyInput& input, Config& out) {
     out.remote_smoothing = c.remote_smoothing;
     out.position.remote_smoothing = c.remote_smoothing;
 
-    // The old file had one vertical limit, which the old runtime applied both ways.
-    out.position.limit_x = c.pos_limit_x;
-    out.position.limit_y = c.pos_limit_y;
-    out.position.limit_y_down = c.pos_limit_y;
-    out.position.limit_z = c.pos_limit_z;
-    out.position.limit_z_back = c.pos_limit_z_back;
+    // The old file had one vertical limit, which the old runtime applied both ways. The reader
+    // replaced a limit that was not finite or was below 0 with its default and took any other; one
+    // above the rows' 10 imports as 10 (N4).
+    using LimitY = cameraunlock::config::schema::ConceptTraits<Concept::PositionLimitY>;
+    using LimitYDown = cameraunlock::config::schema::ConceptTraits<Concept::PositionLimitYDown>;
+    static_assert(LimitY::kMin == LimitYDown::kMin && LimitY::kMax == LimitYDown::kMax,
+                  "LimitY fills both vertical rows, so they take one range");
+    out.position.limit_x = LegacyClampToRange<Concept::PositionLimitX>(c.pos_limit_x, "Position", "LimitX", dropped);
+    out.position.limit_y = LegacyClampToRange<Concept::PositionLimitY>(c.pos_limit_y, "Position", "LimitY", dropped);
+    out.position.limit_y_down = out.position.limit_y;
+    out.position.limit_z = LegacyClampToRange<Concept::PositionLimitZ>(c.pos_limit_z, "Position", "LimitZ", dropped);
+    out.position.limit_z_back =
+        LegacyClampToRange<Concept::PositionLimitZBack>(c.pos_limit_z_back, "Position", "LimitZBack", dropped);
 
     out.log_position_trace = c.log_position_trace;
 
@@ -97,7 +105,8 @@ ImportResult Import(const LegacyInput& input, Config& out) {
     out.yaw_mode_key_name = KeyList(c.yaw_mode_vk, 'H', "YawMode", dropped);
 
     // A row still at what v0.2.1 ran on with no file is no player's choice, so it follows
-    // Defaults.ini. The chords were fixed in code, so each hotkey's code decides alone.
+    // Defaults.ini. The chords were fixed in code, so each hotkey's code decides alone. A limit is
+    // compared as read, so one N4 clamped is the player's.
     LegacyFollowsDefaultsIni follows;
     follows.Setting(Concept::UdpPort, c.port, shipped.port);
     follows.Setting(Concept::EnableOnStartup, c.enabled_on_startup, shipped.enabled_on_startup);
