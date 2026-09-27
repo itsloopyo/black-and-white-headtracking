@@ -2,9 +2,7 @@
 
 ![Black & White running with this mod](https://media.githubusercontent.com/media/itsloopyo/black-and-white-headtracking/refs/heads/main/assets/readme-clip.gif)
 
-*Footage captured in Black & White (Lionhead Studios, 2001), shown to demonstrate this mod. Black & White and all in-game imagery are the property of their respective rights holders. This project is not affiliated with or endorsed by them.*
-
-An unofficial head tracking mod for Black & White that moves the camera with your head while your mouse keeps control of the cursor, driven by OpenTrack over UDP, with no VR headset required.
+An unofficial head tracking mod for Black & White that moves the camera with your head while your mouse keeps control of the cursor, driven by a webcam, phone, or any OpenTrack compatible tracker, with no VR headset required.
 
 ## Features
 
@@ -142,7 +140,7 @@ Every key in the table is an entry in a key list in `CameraUnlock.ini` (`ToggleK
 
 ## Configuration
 
-Apart from creating `CameraUnlock.ini` at startup when there is none, the mod writes to it only when a hotkey changes the tracking mode or the yaw mode. It never writes `HeadTracking.ini`, and it creates `Defaults.ini` only when there is none and never changes it. Edit `CameraUnlock.ini` with the game closed.
+Apart from creating `CameraUnlock.ini` at startup when there is none, the mod writes to it only when a hotkey changes the tracking mode or the yaw mode. Edit it with the game closed.
 
 <!-- cameraunlock:config -->
 The mod reads its settings from `CameraUnlock.ini` in the game folder, and creates the file when it starts and finds none. Edit it with any text editor.
@@ -259,7 +257,7 @@ PositionTrace=false
 ```
 <!-- /cameraunlock:config -->
 
-There are no sensitivity, inversion, deadzone or scale settings: the mod applies the pose your tracker sends, so set those in the tracker. Leaning converts at 40 game units per metre of head movement, the value earlier versions shipped as `WorldScale`.
+There are no sensitivity, inversion, deadzone or scale settings: the mod applies the pose your tracker sends, so set those in the tracker. Leaning converts at 40 game units per metre of head movement.
 
 `ZoomReference` and `ZoomScaleMax` set how leaning scales with the camera's zoom, and `PositionTrace` logs the numbers behind it (see Troubleshooting).
 
@@ -303,11 +301,11 @@ There are no sensitivity, inversion, deadzone or scale settings: the mod applies
 
 ## Updating
 
-Download the new release and run `install.cmd` again. The installer never writes `CameraUnlock.ini` or `HeadTracking.ini`, so your settings stay as they are.
+Download the new release and run `install.cmd` again. The installer never writes `CameraUnlock.ini`, so your settings stay as they are.
 
 ## Uninstalling
 
-Run `uninstall.cmd`. This removes the mod DLL, the launcher and the mod's logs from the game directory. `CameraUnlock.ini` and `HeadTracking.ini` stay, so your settings survive a reinstall.
+Run `uninstall.cmd`. This removes the mod DLL, the launcher and the mod's logs from the game directory. `CameraUnlock.ini` stays, so your settings survive a reinstall.
 
 This mod doesn't install a mod loader, so there's nothing extra to clean up. `uninstall.cmd /force` is accepted for consistency with other CameraUnlock mods but is a no-op here.
 
