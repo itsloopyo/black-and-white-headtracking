@@ -14,16 +14,23 @@
 //
 // Comparison 2, import against migration, is the proof for the migration: the settings the mod
 // starts on are the import's, apart from the approved changes, each of which the import must
-// record as dropped. A sensitivity, inversion, deadzone or WorldScale the player set away from
-// its shipped value is dropped (pose_shaping), and a hotkey code outside 0x01-0xFE imports as
-// unbound (N1). A value the canonical row cannot hold has no approved rule, so the owner defers
+// record as dropped. A sensitivity, inversion, deadzone, WorldScale, ZoomReference or
+// ZoomScaleMax the player set away from its shipped value is dropped (pose_shaping), a hotkey code
+// outside 0x01-0xFE imports as unbound (N1), and so does one on a Ctrl, Shift or Alt key alone
+// (N3), each keeping its Ctrl+Shift chord. A value the canonical row cannot hold has no approved rule, so the owner defers
 // that import and the session runs on what the import gave (kUnrepresentable). The hotkeys fire
 // as the fleet's key lists fire (kFleetHotkeyRule): exactly as v0.2.1 fired them, except for a
 // press made while Ctrl and Shift are both held.
 //
-// Comparison 2 runs twice, once over a Defaults.ini at the built-in values and once over one a
-// player changed, since the migration writes default exactly where the imported value equals
-// what Defaults.ini gives. After every load HeadTracking.ini keeps its bytes, its write time and
+// A row the player never changed from what v0.2.1 ran on with no file follows Defaults.ini: the
+// import lists it in follows_defaults_ini and the migration writes it default, the tracking mode
+// pair as one unit. The test derives that list from what the import read and holds the import's
+// list to it on every input; every file a build wrote or shipped, and the empty file, list every
+// row and migrate to the committed file byte for byte.
+//
+// Comparison 2 runs twice, once over a Defaults.ini at the built-in values, where the session
+// runs as the import read, and once over one a player changed, where a row the player never
+// changed takes Defaults.ini's value and a changed row keeps the player's. After every load HeadTracking.ini keeps its bytes, its write time and
 // its attributes, Defaults.ini is never written, and the folder holds the legacy file and
 // CameraUnlock.ini and nothing else. The next load reads CameraUnlock.ini, imports nothing and
 // writes nothing, and a read-only legacy file imports as a writable one does.
@@ -34,7 +41,8 @@
 // Inputs: no file, an empty file, the first-run output of every published build (v0.1.0,
 // v0.1.2 and v0.1.4 wrote the same file), every committed version of config/HeadTracking.ini up
 // to v0.2.1 (the installer and Nexus ZIPs carried it; no build seeded one through the launcher),
-// and core's corpus over v0.2.1's first-run output and over the file v0.2.1 shipped.
+// a hotkey on each of Ctrl, Shift and Alt, and core's corpus over v0.2.1's first-run output and
+// over the file v0.2.1 shipped.
 
 #include "config.h"
 #include "legacy_config/legacy_config.h"
@@ -56,6 +64,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <initializer_list>
 #include <iterator>
 #include <optional>
 #include <set>
@@ -163,6 +172,9 @@ Startup StartupOf(const legacy::Config& c) {
 }
 
 bool CtrlShiftHeld(int held) { return (held & 3) == 3; }
+
+// Ctrl, Shift and Alt, either side or neither, which N3 unbinds.
+bool ModifierKey(int vk) { return (vk >= 0x10 && vk <= 0x12) || (vk >= 0xA0 && vk <= 0xA5); }
 
 // The first press whose fired actions differ, for the failure message.
 std::string FirstFireDifference(const bw_oracle_view::FireTable& expected, const bw_oracle_view::FireTable& got) {
@@ -452,7 +464,8 @@ bw_oracle_view::FireTable CurrentFires(const Config& m) {
 
 // kFleetHotkeyRule applied to v0.2.1's codes, built independently of core: each action's code
 // fires with Ctrl and Shift not both held, and its chord letter with both held, once per press.
-// A code outside 0x01-0xFE is unbound (N1), and code 0 was unbound already.
+// A code outside 0x01-0xFE is unbound (N1), a Ctrl, Shift or Alt key alone too (N3), and code 0
+// was unbound already.
 bw_oracle_view::FireTable FleetRuleFires(const legacy::Config& l) {
     using bw_oracle_view::kFirstKey;
     using bw_oracle_view::kHeldStates;
@@ -465,7 +478,7 @@ bw_oracle_view::FireTable FleetRuleFires(const legacy::Config& l) {
         for (int held = 0; held < kHeldStates; ++held) {
             std::array<int, 3> fired{};
             for (int a = 0; a < 3; ++a) {
-                const bool plain = codes[a] == vk && !CtrlShiftHeld(held);
+                const bool plain = codes[a] == vk && !ModifierKey(vk) && !CtrlShiftHeld(held);
                 const bool chord = letters[a] == vk && CtrlShiftHeld(held);
                 if (plain || chord) fired[a] = 1;
             }
@@ -476,11 +489,15 @@ bw_oracle_view::FireTable FleetRuleFires(const legacy::Config& l) {
 }
 
 // Where v0.2.1's table and the fleet rule's differ, the press was made with Ctrl and Shift both
-// held, and nowhere else.
+// held, or on a Ctrl, Shift or Alt key N3 unbinds, and nowhere else.
 bool DiffersOnlyUnderCtrlShift(const bw_oracle_view::FireTable& before, const bw_oracle_view::FireTable& after) {
     if (before.size() != after.size()) return false;
     for (std::size_t i = 0; i < before.size(); ++i) {
-        if (before[i] != after[i] && !CtrlShiftHeld(static_cast<int>(i % bw_oracle_view::kHeldStates))) return false;
+        const int vk = static_cast<int>(i / bw_oracle_view::kHeldStates) + bw_oracle_view::kFirstKey;
+        if (before[i] != after[i] && !CtrlShiftHeld(static_cast<int>(i % bw_oracle_view::kHeldStates)) &&
+            !ModifierKey(vk)) {
+            return false;
+        }
     }
     return true;
 }
@@ -546,10 +563,86 @@ struct Tally {
     } builtin, altered;
     int with_pose_shaping_dropped = 0;
     int with_key_code_dropped = 0;
+    int with_modifier_key_dropped = 0;
+    // Inputs that change a row from v0.2.1's default, and those among them that change the mode.
+    int touched = 0;
+    int mode_touched = 0;
     int with_hotkey_rule_difference = 0;
 };
 
 bool OutOfKeyRange(int vk) { return vk != 0 && (vk < 0x01 || vk > 0xFE); }
+
+using cfg::schema::Concept;
+
+// Every row the table binds, each of which follows Defaults.ini.
+const std::set<Concept>& AllRows() {
+    static const std::set<Concept> all = {
+        Concept::UdpPort,        Concept::EnableOnStartup,    Concept::WorldSpaceYaw,   Concept::RotationEnabled,
+        Concept::LocalSmoothing, Concept::RemoteSmoothing,    Concept::PositionEnabled, Concept::PositionLimitX,
+        Concept::PositionLimitY, Concept::PositionLimitYDown, Concept::PositionLimitZ,  Concept::PositionLimitZBack,
+        Concept::ToggleKey,      Concept::CycleTrackingModeKey, Concept::YawModeKey,
+    };
+    return all;
+}
+
+// The rows the player never changed: each reads as v0.2.1 ran on with no file. One LimitY gave
+// both vertical rows, and [Position] Enabled gave the mode pair.
+std::set<Concept> UntouchedRows(const legacy::Config& l) {
+    const legacy::Config d;
+    std::set<Concept> u;
+    const auto row = [&u](bool same, std::initializer_list<Concept> ids) {
+        if (same) u.insert(ids.begin(), ids.end());
+    };
+    row(l.port == d.port, {Concept::UdpPort});
+    row(l.enabled_on_startup == d.enabled_on_startup, {Concept::EnableOnStartup});
+    row(l.world_space_yaw == d.world_space_yaw, {Concept::WorldSpaceYaw});
+    row(l.pos_enabled == d.pos_enabled, {Concept::RotationEnabled, Concept::PositionEnabled});
+    row(l.local_smoothing == d.local_smoothing, {Concept::LocalSmoothing});
+    row(l.remote_smoothing == d.remote_smoothing, {Concept::RemoteSmoothing});
+    row(l.pos_limit_x == d.pos_limit_x, {Concept::PositionLimitX});
+    row(l.pos_limit_y == d.pos_limit_y, {Concept::PositionLimitY, Concept::PositionLimitYDown});
+    row(l.pos_limit_z == d.pos_limit_z, {Concept::PositionLimitZ});
+    row(l.pos_limit_z_back == d.pos_limit_z_back, {Concept::PositionLimitZBack});
+    row(l.toggle_vk == d.toggle_vk, {Concept::ToggleKey});
+    row(l.mode_cycle_vk == d.mode_cycle_vk, {Concept::CycleTrackingModeKey});
+    row(l.yaw_mode_vk == d.yaw_mode_vk, {Concept::YawModeKey});
+    return u;
+}
+
+std::string Names(const std::set<Concept>& rows) {
+    std::string text;
+    for (const Concept row : rows) {
+        text += (text.empty() ? "" : ", ") + std::string(cfg::schema::kConcepts[static_cast<std::size_t>(row)].name);
+    }
+    return text.empty() ? "none" : text;
+}
+
+// What the session runs on over the changed Defaults.ini (WriteAlteredDefaults), in the frozen
+// reader's terms: the import's values, with each row the import left to Defaults.ini as that
+// file gives it.
+legacy::Config OverAlteredDefaults(legacy::Config l, const std::set<Concept>& follows) {
+    const auto f = [&follows](Concept id) { return follows.count(id) != 0; };
+    if (f(Concept::UdpPort)) l.port = 4243;
+    if (f(Concept::EnableOnStartup)) l.enabled_on_startup = false;
+    if (f(Concept::WorldSpaceYaw)) l.world_space_yaw = false;
+    if (f(Concept::RotationEnabled)) l.pos_enabled = false;
+    if (f(Concept::LocalSmoothing)) l.local_smoothing = 0.3f;
+    if (f(Concept::RemoteSmoothing)) l.remote_smoothing = 0.3f;
+    if (f(Concept::PositionLimitX)) l.pos_limit_x = 0.5f;
+    if (f(Concept::PositionLimitY)) l.pos_limit_y = 0.5f;
+    if (f(Concept::PositionLimitZ)) l.pos_limit_z = 0.5f;
+    if (f(Concept::PositionLimitZBack)) l.pos_limit_z_back = 0.2f;
+    if (f(Concept::ToggleKey)) l.toggle_vk = 0x70;
+    if (f(Concept::CycleTrackingModeKey)) l.mode_cycle_vk = 0x71;
+    if (f(Concept::YawModeKey)) l.yaw_mode_vk = 0x72;
+    return l;
+}
+
+// Every file a build wrote or shipped, and the empty file: none holds a value v0.2.1 did not run
+// on with no file, so every row follows Defaults.ini and the migration gives the committed file.
+bool IsUnedited(const std::string& name) {
+    return name == "empty file" || name.rfind("v0.", 0) == 0 || name.rfind("shipped-", 0) == 0;
+}
 
 // Every pose-shaping value the frozen reader read is listed in its place, folded where it holds
 // the value v0.2.1 shipped and dropped as PoseShaping where it does not; a hotkey code outside
@@ -572,6 +665,8 @@ void CheckDrops(const std::string& name, const legacy::Config& l, const ImportRe
         {"Deadzone", "Pitch", SameBits(l.deadzone_pitch, shipped.deadzone_pitch)},
         {"Deadzone", "Roll", SameBits(l.deadzone_roll, shipped.deadzone_roll)},
         {"Position", "WorldScale", SameBits(l.pos_world_scale, kWorldUnitsPerMetre)},
+        {"Position", "ZoomReference", SameBits(l.pos_zoom_reference, 0.0f)},
+        {"Position", "ZoomScaleMax", SameBits(l.pos_zoom_scale_max, kZoomScaleMax)},
         {"Position", "SensX", SameBits(l.pos_sens_x, shipped.pos_sens_x)},
         {"Position", "SensY", SameBits(l.pos_sens_y, shipped.pos_sens_y)},
         {"Position", "SensZ", SameBits(l.pos_sens_z, shipped.pos_sens_z)},
@@ -580,7 +675,7 @@ void CheckDrops(const std::string& name, const legacy::Config& l, const ImportRe
         {"Position", "InvertZ", l.pos_invert_z == shipped.pos_invert_z},
     };
     Check(imported.pose_shaping.size() == std::size(reads),
-          name + ": the import lists " + std::to_string(imported.pose_shaping.size()) + " pose-shaping values, not 16");
+          name + ": the import lists " + std::to_string(imported.pose_shaping.size()) + " pose-shaping values, not 18");
     if (imported.pose_shaping.size() != std::size(reads)) return;
     bool anyDropped = false;
     for (size_t k = 0; k < std::size(reads); ++k) {
@@ -598,15 +693,20 @@ void CheckDrops(const std::string& name, const legacy::Config& l, const ImportRe
     const std::pair<const char*, int> codes[] = {{"Toggle", l.toggle_vk}, {"ModeCycle", l.mode_cycle_vk},
                                                  {"YawMode", l.yaw_mode_vk}};
     bool anyCode = false;
+    bool anyModifier = false;
     for (const auto& [key, vk] : codes) {
         const bool listed = FindDrop(imported.dropped, DropRule::KeyCodeOutOfRange, "Hotkeys", key) != nullptr;
-        Check(listed == OutOfKeyRange(vk), name + ": [Hotkeys] " + key + " dropped does not match its code");
+        Check(listed == OutOfKeyRange(vk), name + ": [Hotkeys] " + key + " dropped as out of range does not match its code");
         if (listed) anyCode = true;
+        const bool modifier = FindDrop(imported.dropped, DropRule::ModifierKey, "Hotkeys", key) != nullptr;
+        Check(modifier == ModifierKey(vk), name + ": [Hotkeys] " + key + " dropped as a modifier key does not match its code");
+        if (modifier) anyModifier = true;
     }
     if (anyCode) ++tally.with_key_code_dropped;
+    if (anyModifier) ++tally.with_modifier_key_dropped;
 
     for (const DroppedValue& d : imported.dropped) {
-        Check(d.rule == DropRule::PoseShaping || d.rule == DropRule::KeyCodeOutOfRange,
+        Check(d.rule == DropRule::PoseShaping || d.rule == DropRule::KeyCodeOutOfRange || d.rule == DropRule::ModifierKey,
               name + ": the import drops [" + d.section + "] " + d.key + " by a rule this map never applies");
     }
 }
@@ -643,15 +743,15 @@ std::vector<std::string> StartupDifferences(const legacy::Config& l, const Confi
         m.position.invert_z) {
         d.push_back("position shaping");
     }
-    if (!SameBits(m.pos_zoom_reference, l.pos_zoom_reference)) d.push_back("ZoomReference");
-    if (!SameBits(m.pos_zoom_scale_max, l.pos_zoom_scale_max)) d.push_back("ZoomScaleMax");
     if (m.log_position_trace != l.log_position_trace) d.push_back("PositionTrace");
 
     const bw_oracle_view::FireTable before = bw_oracle_view::OracleFires(l.toggle_vk, l.yaw_mode_vk, l.mode_cycle_vk);
     const bw_oracle_view::FireTable rule = FleetRuleFires(l);
     const bw_oracle_view::FireTable after = CurrentFires(m);
     if (rule != after) d.push_back("hotkeys against the fleet rule: " + FirstFireDifference(rule, after));
-    if (!DiffersOnlyUnderCtrlShift(before, rule)) d.push_back("hotkeys differ from v0.2.1 without Ctrl+Shift held");
+    if (!DiffersOnlyUnderCtrlShift(before, rule)) {
+        d.push_back("hotkeys differ from v0.2.1 without Ctrl+Shift held or a modifier key bound");
+    }
     if (before != rule) ++tally.with_hotkey_rule_difference;
     return d;
 }
@@ -694,6 +794,12 @@ void Comparison2(Scratch& scratch, const Input& input, const ImportRun& import, 
         Check(Stamp(legacyFile) == legacyBefore, name + ": HeadTracking.ini did not keep its bytes, write time and attributes");
     }
 
+    // Over the changed Defaults.ini the rows the import left to it take its values.
+    const legacy::Config expected =
+        builtin || !mapped ? import.config
+                           : OverAlteredDefaults(import.config, std::set<Concept>(mapped->follows_defaults_ini.begin(),
+                                                                                  mapped->follows_defaults_ini.end()));
+
     if (!input.bytes) {
         // A fresh install, which follows Defaults.ini.
         ++run.created;
@@ -711,7 +817,7 @@ void Comparison2(Scratch& scratch, const Input& input, const ImportRun& import, 
 
     // Imported or deferred, the session runs on the settings the load hands back.
     {
-        const std::vector<std::string> d = StartupDifferences(import.config, loaded.config, tally);
+        const std::vector<std::string> d = StartupDifferences(expected, loaded.config, tally);
         Check(d.empty(), name + ": comparison 2: " + Join(d));
     }
 
@@ -737,6 +843,13 @@ void Comparison2(Scratch& scratch, const Input& input, const ImportRun& import, 
     tally.migrated.insert(migrated);
     if (migrated.find("=default\r\n") != std::string::npos) ++run.with_default_rows;
     if (migrated != tally.committed) ++run.with_values;
+    for (const Concept row : mapped->follows_defaults_ini) {
+        const std::string key = cfg::schema::kConcepts[static_cast<std::size_t>(row)].key;
+        Check(migrated.find("\r\n" + key + "=default\r\n") != std::string::npos, name + ": " + key + " is not written default");
+    }
+    if (builtin && IsUnedited(input.name)) {
+        Check(migrated == tally.committed, name + ": does not migrate to the committed file");
+    }
 
     // The next launch reads CameraUnlock.ini over the same Defaults.ini, with nothing to report,
     // to the same settings, does not import, and writes neither file.
@@ -815,6 +928,11 @@ std::vector<Input> Inputs() {
                              "shipped-f2c72cc.ini"}) {
         inputs.push_back({name, Data(name)});
     }
+    // N3: a hotkey on Ctrl, Shift or Alt alone, which v0.2.1 fired on the way into every chord.
+    for (const char* line : {"Toggle=0x10", "ModeCycle=0x11", "YawMode=0x12", "Toggle=0xA0", "ModeCycle=0xA3",
+                             "YawMode=0xA5"}) {
+        inputs.push_back({std::string("modifier key: ") + line, std::string("[Hotkeys]\r\n") + line + "\r\n"});
+    }
     for (const char* base : {"v0.2.1-first-run.ini", "shipped-f2c72cc.ini"}) {
         for (auto& m : GenerateIniMutations(Data(base), legacy::ReadKeys(), MutationKeys())) {
             inputs.push_back({std::string("corpus over ") + base + ": " + m.name, std::move(m.bytes)});
@@ -874,6 +992,15 @@ int main() {
             if (input.bytes) {
                 mapped = RunMappedImport(scratch, input);
                 Check(mapped->status == ImportStatus::Imported, input.name + ": the mapped import is not Imported");
+                const std::set<Concept> follows(mapped->follows_defaults_ini.begin(), mapped->follows_defaults_ini.end());
+                Check(follows.size() == mapped->follows_defaults_ini.size(),
+                      input.name + ": follows_defaults_ini names a row twice");
+                const std::set<Concept> untouched = UntouchedRows(import.config);
+                Check(follows == untouched, input.name + ": follows Defaults.ini " + Names(follows) +
+                                                ", but the rows the player never changed are " + Names(untouched));
+                if (untouched != AllRows()) ++tally.touched;
+                if (!untouched.count(Concept::RotationEnabled)) ++tally.mode_touched;
+                if (IsUnedited(input.name)) Check(untouched == AllRows(), input.name + ": a row is changed");
             }
             for (const fs::path& defaults : {g_builtinDefaults, g_alteredDefaults}) {
                 Comparison2(scratch, input, import, mapped ? &*mapped : nullptr, defaults, tally);
@@ -890,14 +1017,21 @@ int main() {
             Check(run->with_default_rows > 0, std::string("no import writes default over ") + over);
             Check(run->with_values > 0, std::string("no import writes a value over ") + over);
         }
-        std::printf("  %d with a changed sensitivity, inversion, deadzone or WorldScale dropped (pose_shaping)\n",
+        std::printf("  %d with a changed sensitivity, inversion, deadzone, WorldScale or zoom scaling dropped (pose_shaping)\n",
                     tally.with_pose_shaping_dropped);
         std::printf("  %d with a hotkey code outside 0x01-0xFE imported as unbound (N1)\n", tally.with_key_code_dropped);
+        std::printf("  %d with a hotkey on a Ctrl, Shift or Alt key alone imported as unbound (N3)\n",
+                    tally.with_modifier_key_dropped);
+        std::printf("  %d inputs changed a row from v0.2.1's default, %d of them the tracking mode\n", tally.touched,
+                    tally.mode_touched);
         std::printf("  %d loads whose hotkeys differ from v0.2.1 under Ctrl+Shift: %s\n", tally.with_hotkey_rule_difference,
                     kFleetHotkeyRule);
         std::printf("  deferred: %s\n", kUnrepresentable);
         Check(tally.with_pose_shaping_dropped > 0, "no input drops a changed pose-shaping value");
         Check(tally.with_key_code_dropped > 0, "no input drops an out-of-range hotkey code");
+        Check(tally.with_modifier_key_dropped > 0, "no input drops a hotkey on a modifier key");
+        Check(tally.touched > 0 && tally.mode_touched > 0,
+              "no input changes a row, the tracking mode among them, which then does not follow Defaults.ini");
         Check(tally.with_hotkey_rule_difference > 0, "no input shows the fleet hotkey rule");
         Check(tally.migrated.count(tally.committed) == 1, "no input migrated to the committed file");
 

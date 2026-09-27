@@ -100,12 +100,12 @@ bool Plugin::Initialize() {
     // and nothing else, and every "it feels wrong" question (too strong, too
     // laggy, wrong axis, hotkey does nothing) is answered by these numbers.
     HT_LOG("[plugin] initialized - enabled=%d mode=%s yaw=%s "
-           "smoothing local=%.2f remote=%.2f | pos scale=%.1f zoomRef=%.1f zoomMax=%.2f "
+           "smoothing local=%.2f remote=%.2f | pos scale=%.1f zoomMax=%.2f "
            "limits x=%.2f y=%.2f/%.2f z=%.2f/%.2f | hotkeys toggle=[%s] modeCycle=[%s] yawMode=[%s]",
            m_enabled.load() ? 1 : 0, TrackingModeName(),
            m_worldSpaceYaw.load() ? "world-space" : "camera-local",
            m_config.local_smoothing, m_config.remote_smoothing,
-           kWorldUnitsPerMetre, m_config.pos_zoom_reference, m_config.pos_zoom_scale_max,
+           kWorldUnitsPerMetre, kZoomScaleMax,
            m_config.position.limit_x, m_config.position.limit_y, m_config.position.limit_y_down,
            m_config.position.limit_z, m_config.position.limit_z_back,
            m_config.toggle_key_name.c_str(), m_config.cycle_tracking_mode_key_name.c_str(),
@@ -210,20 +210,11 @@ bool Plugin::GetCurrentRotationRadians(float& yaw, float& pitch, float& roll) {
         float zoom = 1.0f;
         const float focal = GetFocalDistance();
         if (focal > 0.0f) {
-            float ref = m_config.pos_zoom_reference;
-            if (ref <= 0.0f) {
-                if (m_zoomRef <= 0.0f) m_zoomRef = focal;  // lock to first gameplay zoom
-                ref = m_zoomRef;
-            }
-            if (ref > 0.0f) {
-                zoom = focal / ref;
-                // B&W's focal distance spans ~500x; uncapped this lunges the
-                // camera at full zoom-out. Clamp to [1/max, max].
-                const float hi = m_config.pos_zoom_scale_max;
-                const float lo = 1.0f / hi;
-                if (zoom > hi) zoom = hi;
-                if (zoom < lo) zoom = lo;
-            }
+            if (m_zoomRef <= 0.0f) m_zoomRef = focal;  // lock to first gameplay zoom
+            zoom = focal / m_zoomRef;
+            const float lo = 1.0f / kZoomScaleMax;
+            if (zoom > kZoomScaleMax) zoom = kZoomScaleMax;
+            if (zoom < lo) zoom = lo;
         }
         const float scale = kWorldUnitsPerMetre * zoom;
         const float wx = ox * scale;
@@ -236,8 +227,7 @@ bool Plugin::GetCurrentRotationRadians(float& yaw, float& pitch, float& roll) {
 
         // Calibration trace: raw tracker metres, clamped metres, and the
         // engine-unit offset actually handed to the camera hook. Use this to
-        // read a focal distance for ZoomReference and confirm each axis moves
-        // the right way.
+        // read the focal distance and confirm each axis moves the right way.
         //
         // Off unless [Logging] PositionTrace is set, and then one line a second
         // for the first minute of tracked position. Unbounded it was ~540 KB an

@@ -22,16 +22,17 @@ constexpr const char* kConfigDisplayName = "Black & White";
 // applies as a constant.
 constexpr float kWorldUnitsPerMetre = 40.0f;
 
+// The zoom scaling of kWorldUnitsPerMetre, part of the same unit conversion. The lean offset
+// scales by focal/reference, the reference being the first gameplay zoom seen, so its on-screen
+// effect is the same at every zoom, clamped to [1/kZoomScaleMax, kZoomScaleMax] because B&W's
+// focal distance spans ~500x across the zoom range and uncapped scaling lunges the camera at full
+// zoom-out. Every build before the canonical format read the reference from [Position]
+// ZoomReference and the clamp from ZoomScaleMax, shipped and defaulted at 0 (the first zoom) and
+// 2.5.
+constexpr float kZoomScaleMax = 2.5f;
+
 // Core's config with this game's own rows.
 struct Config : cameraunlock::HeadTrackingConfig {
-    // Camera focal distance (zoom) at which kWorldUnitsPerMetre is calibrated. The offset
-    // scales by focal/pos_zoom_reference so the on-screen effect is constant across zoom.
-    // 0 = auto: lock to the first gameplay zoom seen.
-    float pos_zoom_reference = 0.0f;
-    // Clamp on the zoom multiplier, applied as [1/max, max]. B&W's focal distance spans ~500x
-    // across the zoom range, so uncapped scaling lunges the camera at full zoom-out.
-    float pos_zoom_scale_max = 2.5f;
-
     // Per-second trace of tracker metres, clamped metres, engine offset and focal distance.
     bool log_position_trace = false;
 };

@@ -119,8 +119,8 @@ void TestFirstStartCreatesTheCommittedFile() {
 }
 
 // A fresh install and an upgrade from v0.2.1's defaults start the same: the map of the frozen
-// defaults holds every row at the table's default, drops nothing, and every pose-shaping value
-// is the shipped one, which the code now does.
+// defaults holds every row at the table's default, leaves every row to Defaults.ini, drops
+// nothing, and every pose-shaping value is the shipped one, which the code now does.
 void TestLegacyDefaultsMapToTheDefaults() {
     wchar_t temp[MAX_PATH];
     GetTempPathW(MAX_PATH, temp);
@@ -131,7 +131,9 @@ void TestLegacyDefaultsMapToTheDefaults() {
         MakeLegacyImport().run(cfg::LegacyInput{missing.wstring(), missing.string(), false}, mapped);
     Check(result.status == cfg::ImportStatus::Absent, "no file imports as Absent");
     Check(result.dropped.empty(), "v0.2.1's defaults drop nothing");
-    Check(result.pose_shaping.size() == 16, "every sensitivity, inversion, deadzone and the unit scale is recorded");
+    Check(result.pose_shaping.size() == 18,
+          "every sensitivity, inversion, deadzone, the unit scale and its zoom scaling is recorded");
+    Check(result.follows_defaults_ini.size() == 15, "every one of the 15 concept rows follows Defaults.ini");
     for (const cfg::PoseShapingValue& value : result.pose_shaping) {
         Check(value.folded, "[" + value.section + "] " + value.key + " at its shipped value is folded");
     }
@@ -140,6 +142,8 @@ void TestLegacyDefaultsMapToTheDefaults() {
               mapped.yaw_mode_key_name == "PageDown, Ctrl+Shift+H",
           "the old hotkeys and their chords become the fleet's key lists");
     Check(legacy::Config{}.pos_world_scale == kWorldUnitsPerMetre, "the code converts a lean at the shipped WorldScale");
+    Check(legacy::Config{}.pos_zoom_reference == 0.0f && legacy::Config{}.pos_zoom_scale_max == kZoomScaleMax,
+          "the code scales a lean with zoom as the shipped ZoomReference and ZoomScaleMax did");
 }
 
 std::vector<std::string> Lines(const std::string& bytes) {

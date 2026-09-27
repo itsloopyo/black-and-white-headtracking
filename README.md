@@ -145,25 +145,11 @@ Apart from creating `CameraUnlock.ini` at startup when there is none, the mod wr
 <!-- cameraunlock:config -->
 The mod reads its settings from `CameraUnlock.ini` in the game folder, and creates the file when it starts and finds none. Edit it with any text editor.
 
-A setting set to `default` takes its value from `Defaults.ini`, which every head tracking mod that keeps its settings in `CameraUnlock.ini` reads. Head tracking mods that keep their settings in another file do not read it, and neither do earlier versions of this mod. Writing a value in place of `default` changes that setting for this game only. When the mod saves a setting that a hotkey changed in game, it writes the new value in place of `default`, so that setting no longer follows `Defaults.ini` in this game until you set it to `default` again.
+A setting set to `default` takes its value from `Defaults.ini`, which every head tracking mod that keeps its settings in `CameraUnlock.ini` reads. Head tracking mods that keep their settings in another file do not read it. Writing a value in place of `default` changes that setting for this game only. When the mod saves a setting that a hotkey changed in game, it writes the new value in place of `default`, so that setting no longer follows `Defaults.ini` in this game until you set it to `default` again.
 
 `Defaults.ini` is `%AppData%\CameraUnlock\Defaults.ini` on Windows; `$XDG_CONFIG_HOME/CameraUnlock/Defaults.ini` on Linux, or `~/.config/CameraUnlock/Defaults.ini` where `XDG_CONFIG_HOME` is not set, under Wine and Proton too; and `~/Library/Application Support/CameraUnlock/Defaults.ini` on macOS. The mod's log, where it writes one, names the file it read.
 
 When the mod starts and finds no `Defaults.ini`, it creates one holding the built-in values, unless Windows runs the game as a packaged app. The mod never changes `Defaults.ini` after that. Edit it with any text editor.
-
-Earlier versions of the mod kept these settings in `HeadTracking.ini`, in the same folder. The first time this version starts and finds no `CameraUnlock.ini`, it reads your settings from `HeadTracking.ini` and writes them into `CameraUnlock.ini`. It never changes `HeadTracking.ini`, and does not read it again while `CameraUnlock.ini` exists.
-
-A setting that the defaults below set to `default` is written as `default` when the value imported for it equals its default at that start, which is the value `Defaults.ini` gives it, or the built-in value where `Defaults.ini` gives none. It then follows `Defaults.ini`. Every other setting is written with the value imported for it. `RotationEnabled` and `PositionEnabled` are one setting here, the tracking mode, so both are written as `default` or neither is.
-
-Comments, and keys the mod never read, are not carried over. Nor are these, where your old file had them:
-
-- Reticle settings, and a key that toggled the reticle.
-- A sensitivity, scale, deadzone, response curve or axis inversion you changed from its default. Set these in your tracker instead.
-- The setting for a feature that earlier versions shipped switched off while it was untested. It now follows the mod's default.
-
-An older version of the mod reads `HeadTracking.ini` and never reads `CameraUnlock.ini`, so a setting you change after updating is not in `HeadTracking.ini`.
-
-Deleting only `CameraUnlock.ini` makes the next start read `HeadTracking.ini` again. To go back to the defaults, replace everything in `CameraUnlock.ini` with the defaults below. Every setting they set to `default` then follows `Defaults.ini`.
 
 The built-in value of each setting set to `default` below:
 
@@ -234,13 +220,6 @@ PositionLimitYDown=default
 PositionLimitZ=default
 ; How far, in metres, leaning back can move the view.
 PositionLimitZBack=default
-; The zoom at which leaning is not scaled, as the camera's distance to what it looks at
-; in the game's units. At other zooms leaning is scaled by the ratio of the two distances,
-; within ZoomScaleMax. 0 uses the first zoom the game shows. PositionTrace logs the distance.
-ZoomReference=0.0
-; The most the zoom scaling may multiply or divide leaning by. 1 turns it off.
-; Lower it if leaning moves the view too far when zoomed out.
-ZoomScaleMax=2.5
 
 [Hotkeys]
 ; Turns head tracking on and off.
@@ -257,9 +236,7 @@ PositionTrace=false
 ```
 <!-- /cameraunlock:config -->
 
-There are no sensitivity, inversion, deadzone or scale settings: the mod applies the pose your tracker sends, so set those in the tracker. Leaning converts at 40 game units per metre of head movement.
-
-`ZoomReference` and `ZoomScaleMax` set how leaning scales with the camera's zoom, and `PositionTrace` logs the numbers behind it (see Troubleshooting).
+There are no sensitivity, inversion, deadzone or scale settings: the mod applies the pose your tracker sends, so set those in the tracker. Leaning converts at 40 game units per metre of head movement, scaled with the camera's zoom (see Troubleshooting). `PositionTrace` logs the numbers behind it.
 
 ## Troubleshooting
 
@@ -284,8 +261,7 @@ There are no sensitivity, inversion, deadzone or scale settings: the mod applies
 **Positional tracking feels too strong / too weak / wrong direction**
 
 - How far a lean moves the view is set by how much head movement your tracker sends; scale it there.
-- Positional tracking automatically scales with zoom so it feels the same zoomed in or out. By default (`ZoomReference=0.0`) it locks to the zoom level you're at when tracking first applies, and scales relative to that. If you want a fixed reference, set `[Logging] PositionTrace=true` in `CameraUnlock.ini`, play for a moment at your preferred zoom, read the `focal=` value from `HeadTracking.log`, and set `ZoomReference` to it.
-- `ZoomScaleMax` caps how far the zoom scaling can push (range `[1/max, max]`). B&W's focal distance spans roughly 500x across the zoom range, so without a cap the camera lunges at full zoom-out. If zoom-out still feels too strong, lower `ZoomScaleMax` (e.g. `1.8`); if zoom-out feels too weak, raise it.
+- Positional tracking scales with zoom so it feels the same zoomed in or out. It takes the zoom level you're at when tracking first applies as its reference, and scales relative to that, by at most 2.5 times either way.
 - If an axis moves the view the wrong way, invert it in your tracker.
 - Press `Page Up` (or `Ctrl+Shift+G`) to switch to rotation only. The mod saves the mode and starts in it next time.
 - Position is applied last, as a camera-local shift (relative to where you're looking).

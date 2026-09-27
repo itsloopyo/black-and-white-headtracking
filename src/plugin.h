@@ -83,7 +83,7 @@ private:
     std::unique_ptr<CameraHook>    m_cameraHook;
     std::unique_ptr<HotkeyHandler> m_hotkeys;
 
-    // Auto-locked zoom reference (focal distance) when pos_zoom_reference is 0.
+    // The zoom reference (focal distance), locked to the first gameplay zoom seen.
     float m_zoomRef = 0.0f;
 
     // Cached most-recent rotation, updated at the end of each successful
