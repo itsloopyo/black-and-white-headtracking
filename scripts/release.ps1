@@ -8,23 +8,6 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# THIRD-PARTY-NOTICES.md names the cameraunlock-core commit compiled into the
-# release ZIPs, and bumping the submodule does not touch it. Packaging refuses
-# to ship that mismatch, so a bump with no notices edit stopped the release
-# here, or in CI once the tag had already been pushed. Re-sync it and let this
-# release carry the correction.
-$noticesRoot = Split-Path -Parent $PSScriptRoot
-& git -C $noticesRoot diff --quiet -- THIRD-PARTY-NOTICES.md
-if ($LASTEXITCODE -ne 0) { throw "THIRD-PARTY-NOTICES.md has uncommitted edits. Commit or discard them, then re-run." }
-& (Join-Path $noticesRoot 'cameraunlock-core\scripts\sync-core-notices.ps1') -Repo $noticesRoot
-if ($LASTEXITCODE -ne 0) { throw "sync-core-notices.ps1 exited $LASTEXITCODE - fix THIRD-PARTY-NOTICES.md before releasing." }
-& git -C $noticesRoot diff --quiet -- THIRD-PARTY-NOTICES.md
-if ($LASTEXITCODE -ne 0) {
-    & git -C $noticesRoot commit -q -m 'chore: record the cameraunlock-core commit this build compiles' -- THIRD-PARTY-NOTICES.md
-    if ($LASTEXITCODE -ne 0) { throw "Could not commit the re-synced THIRD-PARTY-NOTICES.md." }
-    Write-Host 'THIRD-PARTY-NOTICES.md re-synced to the pinned cameraunlock-core commit.' -ForegroundColor Yellow
-}
-
 if (-not $Version) {
     Write-Error "Usage: pixi run release <major|minor|patch|nightly|X.Y.Z>"
     exit 1
@@ -39,6 +22,42 @@ $repoRoot = Resolve-Path "$PSScriptRoot\.."
 Set-Location $repoRoot
 
 Import-Module (Join-Path $repoRoot 'cameraunlock-core\powershell\ReleaseWorkflow.psm1') -Force
+
+# New-ChangelogFromCommits lists commit subjects and never reads [Unreleased], so the notes written
+# there by hand would stay behind under the new entry, reading as older than it, and the release
+# notes taken from the new entry would leave them out. They open the new entry instead, merged
+# heading by heading.
+function Move-UnreleasedIntoEntry {
+    param([string]$Path, [string]$NewVersion)
+    $text = [System.IO.File]::ReadAllText($Path)
+    $unreleased = [regex]::Match($text, '(?ms)^## \[Unreleased\][^\n]*\n(.*?)(?=^## \[|\z)')
+    if (-not $unreleased.Success) { return }
+    $text = $text.Remove($unreleased.Index, $unreleased.Length)
+    $entry = [regex]::Match($text, "(?ms)^(## \[$([regex]::Escape($NewVersion))\][^\n]*\n)(.*?)(?=^## \[|\z)")
+    if (-not $entry.Success) { throw "CHANGELOG.md has no [$NewVersion] entry to move [Unreleased] into." }
+    $order = New-Object System.Collections.Generic.List[string]
+    $sections = @{}
+    foreach ($body in @($unreleased.Groups[1].Value, $entry.Groups[2].Value)) {
+        if (($body -split '(?m)^### ', 2)[0].Trim()) {
+            throw "CHANGELOG.md has text outside a ### heading in [Unreleased] or [$NewVersion]; put it under one."
+        }
+        foreach ($block in [regex]::Matches($body, '(?ms)^### ([^\n]+)\n(.*?)(?=^### |\z)')) {
+            $heading = $block.Groups[1].Value.Trim()
+            if (-not $sections.ContainsKey($heading)) {
+                $order.Add($heading)
+                $sections[$heading] = @()
+            }
+            $content = $block.Groups[2].Value.Trim()
+            if ($content) { $sections[$heading] += $content }
+        }
+    }
+    $merged = $entry.Groups[1].Value + "`n"
+    foreach ($heading in $order) {
+        $merged += "### $heading`n`n" + ($sections[$heading] -join "`n") + "`n`n"
+    }
+    $text = $text.Remove($entry.Index, $entry.Length).Insert($entry.Index, $merged)
+    [System.IO.File]::WriteAllText($Path, $text.TrimEnd() + "`n", (New-Object System.Text.UTF8Encoding($false)))
+}
 
 # Mirrors New-ChangelogFromCommits' insertion so a -Force maintenance entry
 # lands in the same place with the same shape.
@@ -68,12 +87,25 @@ if (-not (Test-SemanticVersion -Version $newVersion)) {
 }
 Write-Host "Releasing v$newVersion (current: v$currentVersion)" -ForegroundColor Cyan
 
-# validate-manifest holds config.canonical_since to the version on a built ZIP only, and neither
-# packaging nor the release workflow runs it, so a lower version would ship this build with a
+# Before anything is written or committed: a version below config.canonical_since would ship a
 # descriptor naming a version later than itself.
-$canonicalSince = (Get-Content (Join-Path $repoRoot 'launcher-manifest.json') -Raw | ConvertFrom-Json).config.canonical_since
-if ([version]$newVersion -lt [version]$canonicalSince) {
-    throw "v$newVersion is below launcher-manifest.json's config.canonical_since ($canonicalSince), the first version that reads CameraUnlock.ini. Release $canonicalSince or later."
+Assert-ReleaseNotBelowCanonicalSince -RepoRoot $repoRoot -Version $newVersion
+
+# THIRD-PARTY-NOTICES.md names the cameraunlock-core commit compiled into the
+# release ZIPs, and bumping the submodule does not touch it. Packaging refuses
+# to ship that mismatch, so a bump with no notices edit stopped the release
+# here, or in CI once the tag had already been pushed. Re-sync it and let this
+# release carry the correction.
+$noticesRoot = Split-Path -Parent $PSScriptRoot
+& git -C $noticesRoot diff --quiet -- THIRD-PARTY-NOTICES.md
+if ($LASTEXITCODE -ne 0) { throw "THIRD-PARTY-NOTICES.md has uncommitted edits. Commit or discard them, then re-run." }
+& (Join-Path $noticesRoot 'cameraunlock-core\scripts\sync-core-notices.ps1') -Repo $noticesRoot
+if ($LASTEXITCODE -ne 0) { throw "sync-core-notices.ps1 exited $LASTEXITCODE - fix THIRD-PARTY-NOTICES.md before releasing." }
+& git -C $noticesRoot diff --quiet -- THIRD-PARTY-NOTICES.md
+if ($LASTEXITCODE -ne 0) {
+    & git -C $noticesRoot commit -q -m 'chore: record the cameraunlock-core commit this build compiles' -- THIRD-PARTY-NOTICES.md
+    if ($LASTEXITCODE -ne 0) { throw "Could not commit the re-synced THIRD-PARTY-NOTICES.md." }
+    Write-Host 'THIRD-PARTY-NOTICES.md re-synced to the pinned cameraunlock-core commit.' -ForegroundColor Yellow
 }
 
 $branch = (& git rev-parse --abbrev-ref HEAD).Trim()
@@ -107,9 +139,14 @@ if (-not $hasExistingTags) {
             Write-Host "No user-facing changes to release. Re-run with -Force for a maintenance release." -ForegroundColor Yellow
             exit 1
         }
+        if ([System.IO.File]::ReadAllText($changelogPath) -match '(?m)^## \[Unreleased\]') {
+            Write-Host 'Error: CHANGELOG.md has an [Unreleased] section, so this is not a maintenance release.' -ForegroundColor Red
+            exit 1
+        }
         Write-Host "No user-facing commits since last tag - writing maintenance entry (-Force)." -ForegroundColor Yellow
         Add-MaintenanceChangelogEntry -Path $changelogPath -NewVersion $newVersion
     }
+    Move-UnreleasedIntoEntry -Path $changelogPath -NewVersion $newVersion
 }
 
 # Update version.h
