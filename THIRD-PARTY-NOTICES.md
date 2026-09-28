@@ -13,7 +13,7 @@ Black & White.
 |-----------|---------|---------|--------------|
 | MinHook | v1.3.4 | BSD-2-Clause | Compiled into `HeadTracking.dll` |
 | OpenGL Mathematics (GLM) | 1.0.1 | MIT | Compiled into `HeadTracking.dll` |
-| cameraunlock-core | 556aa5de6af7eb8004aa9b8d374086c19b0ab9fc | MIT | Compiled into `HeadTracking.dll` |
+| cameraunlock-core | 9d36a5f9bbda1dce69f5fc3edfc2672153c4e5fb | MIT | Compiled into `HeadTracking.dll` |
 | OpenTrack | n/a | ISC | Not bundled; UDP protocol interoperability only |
 
 ---
@@ -186,7 +186,7 @@ THE SOFTWARE.
 Git submodule at `cameraunlock-core/`, compiled into `HeadTracking.dll`. Our own code,
 MIT licensed, reproduced here so the notices are complete.
 
-- Pinned commit: `556aa5de6af7eb8004aa9b8d374086c19b0ab9fc`
+- Pinned commit: `9d36a5f9bbda1dce69f5fc3edfc2672153c4e5fb`
 
 ```
 MIT License
