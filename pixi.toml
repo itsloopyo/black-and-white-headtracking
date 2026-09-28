@@ -19,9 +19,11 @@ build-release = { cmd = "cmake --build build --config Release", depends-on = ["s
 install       = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 Release", depends-on = ["build-release"] }
 uninstall     = "scripts\\uninstall.cmd"
 # The host-side unit tests and the config differential test, in their own tree (build-tests/).
-test          = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/run-tests.ps1" }
+test-unit     = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/run-tests.ps1 -Suite unit" }
+test-differential = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/run-tests.ps1 -Suite differential" }
+test          = { depends-on = ["test-unit", "test-differential"] }
 build-tests   = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/run-tests.ps1 -BuildOnly" }
-package       = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["build-release", "test"] }
+package       = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["build-release", "test-unit"] }
 # Rewrite config/HeadTracking.ini, the committed copy of the CameraUnlock.ini the mod creates at
 # first launch, from the config table after a change to a row, a comment or a default, then
 # rewrite the per_game of launcher-manifest.json's config descriptor from it.

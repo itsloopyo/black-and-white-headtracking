@@ -64,6 +64,18 @@ if (-not $Force -and -not (Test-CleanGitStatus)) { throw "Working tree is not cl
 $tag = "v$newVersion"
 if (Test-GitTagExists -Tag $tag) { throw "Tag $tag already exists." }
 
+Write-Host "Running the full test suite..." -ForegroundColor Cyan
+Push-Location $repoRoot
+try {
+    pixi run test
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Error: pixi run test failed. Nothing was changed." -ForegroundColor Red
+        exit 1
+    }
+} finally {
+    Pop-Location
+}
+
 $changelogPath = Join-Path $repoRoot 'CHANGELOG.md'
 
 # Changelog - generate it BEFORE mutating any version files so an abort here
