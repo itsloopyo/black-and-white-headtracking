@@ -234,14 +234,19 @@ static DWORD WINAPI BootstrapThread(LPVOID) {
     HT_LOG("[main] HeadTracking %s loaded into pid %lu",
            HEADTRACKING_VERSION_STRING, GetCurrentProcessId());
 
-    // Hooks must be armed before the game's main thread resumes, otherwise
-    // we miss DirectDrawCreate. Launcher inject -> DllMain -> this thread
-    // all run with the main thread suspended; we initialize synchronously.
+    // Not in DllMain: this loads the config and starts threads, which must not
+    // run under the loader lock. The launcher resumes the game as soon as
+    // LoadLibraryW returns, so the game is usually already running by now.
     if (!headtracking::GetPlugin().Initialize()) {
         HT_LOG("[main] plugin initialization failed");
     }
 
-    CreateThread(nullptr, 0, CenterWindowThread, nullptr, 0, nullptr);
+    const HANDLE cage = CreateThread(nullptr, 0, CenterWindowThread, nullptr, 0, nullptr);
+    if (!cage) {
+        HT_LOG("[main] could not start the window/cursor thread (error %lu)", GetLastError());
+        return 0;
+    }
+    CloseHandle(cage);
     return 0;
 }
 
@@ -249,7 +254,9 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID reserved) {
     switch (reason) {
         case DLL_PROCESS_ATTACH:
             DisableThreadLibraryCalls(module);
-            CreateThread(nullptr, 0, BootstrapThread, nullptr, 0, nullptr);
+            if (const HANDLE bootstrap = CreateThread(nullptr, 0, BootstrapThread, nullptr, 0, nullptr)) {
+                CloseHandle(bootstrap);
+            }
             break;
         case DLL_PROCESS_DETACH:
             // reserved != nullptr means the process is terminating: every other

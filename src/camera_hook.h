@@ -24,10 +24,4 @@ float GetFocalDistance();
 
 void SetVirtualCursor(bool active, int x, int y);
 
-// Pixel offset of the head-rotated view centre within the clean camera's cursor
-// space, refreshed each camera build. The cursor cage subtracts this from the
-// engine cursor (kCursorX/Y) to get the on-screen hand position so it can clamp
-// the hand to the visible play area. Zero when tracking is inactive.
-void GetCursorBoxOffset(int& offsetX, int& offsetY);
-
 }  // namespace headtracking

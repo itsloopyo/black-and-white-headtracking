@@ -59,11 +59,8 @@ constexpr uintptr_t kCursorAccumYAddr   = 0x00D37CB4;
 
 // FUN_0081B370 pixel<->ray constants. For pixel p the engine forms a view-space
 // ray ((p.x-halfX)*scaleX/halfX, (halfY-p.y)*scaleY/halfY, fwd) then rotates it
-// by g_cameraStruct. Inverting that lets us project the head-rotated forward axis
-// back into clean-camera cursor pixels - the offset the cursor cage uses to keep
-// the hand inside the visible (rotated) play area while picks still raycast
-// through the clean camera.
-constexpr uintptr_t kViewForwardAddr  = 0x00E839E0;  // float, view-space forward depth
+// by g_cameraStruct. Inverting that projects the head-rotated forward axis back
+// into clean-camera cursor pixels, which is the pick orchestrator's cursor shift.
 constexpr uintptr_t kScreenHalfXAddr  = 0x00E839F0;  // float, screen centre X (half width), px
 constexpr uintptr_t kScreenHalfYAddr  = 0x00E839F4;  // float, screen centre Y (half height), px
 constexpr uintptr_t kProjScaleXAddr   = 0x00C3812C;  // float, horizontal ray scale (~tan(fovH/2))

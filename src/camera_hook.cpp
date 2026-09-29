@@ -44,9 +44,8 @@ constexpr uintptr_t kFn_CitadelGlow_Addr = 0x007954A0;  // citadel/temple-room g
 constexpr uintptr_t kFn_CursorEffect_Addr = 0x00576F20;  // cursor-edge effect / rotation-strength gate processor
 constexpr uintptr_t kFn_PickOrchestrator_Addr = 0x005E42E0;  // per-frame "what's under the cursor": snapshots kCursorX/Y -> DAT_ea1ac8/cc + calls S2W
 
-// True while g_cameraStruct holds the head-rotated copy (during the world
-// render and post-world HUD sandwiches). Declared early so the DrawPrimitive
-// capture below can record it. Defined here, used by the sandwich hooks too.
+// True while g_cameraStruct holds the head-rotated copy, inside the world-render
+// sandwich (Hook_WorldRender).
 std::atomic<bool> g_inSandwich{false};
 // Clean (un-rotated) camera matrix saved by the world-render sandwich at its
 // entry, restored at exit. Valid (= the clean camera) while inSandwich.
@@ -57,7 +56,7 @@ float g_cleanCameraSave[kViewMatrixFloats] = {0};
 // scaled-matrix path rotated, those primitives stay anchored to the
 // clean (unrotated) view -> they look screen-locked / counter-moving
 // when the head turns. Fix: sandwich the world-render dispatcher
-// (FUN_005E42E0) with a rotated copy of g_cameraStruct so every render
+// (FUN_0054DA80) with a rotated copy of g_cameraStruct so every render
 // path sees the rotated camera; restore on exit so game logic, MMB
 // raycast, AI vision etc. continue to see the clean matrix.
 //
@@ -83,14 +82,6 @@ std::atomic<bool> g_virtualCursorActive{false};
 // the unclamped cursor position straight into its mirrors at +0xbc/+0xc4/+0xd0
 // without waiting for the engine to call one of the hooked entry points.
 std::atomic<uintptr_t> g_inputObject{0};
-
-// Head-turn pixel offset of the rendered (head-rotated) view centre within the
-// CLEAN camera's cursor space. The cursor cage subtracts this from kCursorX/Y to
-// get the on-screen hand position and clamps THAT to the screen rect, so the
-// hand stays in the visible play area under head rotation. Refreshed by
-// UpdateCursorBoxOffset each camera build.
-std::atomic<float> g_cursorBoxOffsetX{0.0f};
-std::atomic<float> g_cursorBoxOffsetY{0.0f};
 
 // Pixel shift the pick orchestrator (FUN_005E42E0) applies to kCursorX/Y before
 // snapshotting them into DAT_00ea1ac8/cc and calling FUN_0081B370. The shift is
@@ -165,26 +156,6 @@ Mat3 BuildPitchRollRowVector(float pitch, float roll) {
     }};
 }
 
-// Pixel offset between kCursorX/Y (clean) and the on-screen hand position
-// (rotated). Per-axis tan-of-input, clamped: pure yaw only shifts X, pure pitch
-// only shifts Y. This matches the visible shift under world-Y (horizon-locked)
-// rotation, where the rendered horizon doesn't tilt so the cage shouldn't tilt
-// either. Under camera-local rotation the rendered horizon DOES tilt with yaw
-// but the cage stays rectangular - that mode trades geometric fidelity for the
-// no-arc cursor behaviour the user prefers.
-void UpdateCursorBoxOffset(float yaw_r, float pitch_r) {
-    constexpr float kMaxAngleRad = 1.047f;  // 60°
-    const float yaw_c   = std::max(-kMaxAngleRad, std::min(kMaxAngleRad, yaw_r));
-    const float pitch_c = std::max(-kMaxAngleRad, std::min(kMaxAngleRad, pitch_r));
-    const float fwd   = *reinterpret_cast<const float*>(kViewForwardAddr);
-    const float kx    = *reinterpret_cast<const float*>(kProjScaleXAddr);
-    const float ky    = *reinterpret_cast<const float*>(kProjScaleYAddr);
-    const float halfX = *reinterpret_cast<const float*>(kScreenHalfXAddr);
-    const float halfY = *reinterpret_cast<const float*>(kScreenHalfYAddr);
-    g_cursorBoxOffsetX.store( std::tan(yaw_c)   * (fwd / kx) * halfX, std::memory_order_release);
-    g_cursorBoxOffsetY.store(-std::tan(pitch_c) * (fwd / ky) * halfY, std::memory_order_release);
-}
-
 // Compute the pixel shift to apply to kCursorX/Y inside the pick orchestrator
 // (FUN_005E42E0) so that the cursor lines up with what is drawn under it through
 // the head-rotated view.
@@ -201,7 +172,7 @@ void UpdateCursorBoxOffset(float yaw_r, float pitch_r) {
 // not the naive per-axis-tangent formula) so roll combines correctly: roll is
 // applied to the direction vector before perspective-divide, not to NDC.
 void ComputePickCursorShift(float yaw_r, float pitch_r, float roll_r) {
-    constexpr float kMaxAngleRad = 1.047f;  // 60°, matches UpdateCursorBoxOffset clamp
+    constexpr float kMaxAngleRad = 1.047f;  // 60°
     const float y_r = std::max(-kMaxAngleRad, std::min(kMaxAngleRad, yaw_r));
     const float p_r = std::max(-kMaxAngleRad, std::min(kMaxAngleRad, pitch_r));
 
@@ -249,8 +220,6 @@ void ApplyHeadRotationToRenderMatrix() {
     const float* clean = reinterpret_cast<const float*>(kCameraStructAddr);
 
     if (!tracking_active) {
-        g_cursorBoxOffsetX.store(0.0f, std::memory_order_release);
-        g_cursorBoxOffsetY.store(0.0f, std::memory_order_release);
         g_pickShiftX.store(0.0f, std::memory_order_release);
         g_pickShiftY.store(0.0f, std::memory_order_release);
         // Mirror this frame's clean into g_rotatedMatrix so the world-
@@ -351,9 +320,6 @@ void ApplyHeadRotationToRenderMatrix() {
 
     CopyViewMatrix(g_rotatedMatrix, rotated);
 
-    g_cursorBoxOffsetX.store(0.0f, std::memory_order_release);
-    g_cursorBoxOffsetY.store(0.0f, std::memory_order_release);
-
     // 0xEA9DE0 is the engine's inverse of g_scaledMatrix, used by the shadow
     // projector (FUN_0081FFF0) to bring bones from view-rotated-scaled space
     // back to world space before flattening onto the ground plane. The
@@ -419,7 +385,7 @@ typedef void (__fastcall *Fn_Water_t)(void *self);
 Fn_Water_t g_orig_water = nullptr;
 
 // Camera-struct rotated copy stash for the world-render sandwich.
-// FUN_005E42E0 is called once per scene render. We swap rotated in on
+// FUN_0054DA80 is called once per scene render. We swap rotated in on
 // entry and clean back on exit. ApplyHead has already written the
 // rotated render matrix; we just need to align g_cameraStruct with it
 // so CPU-projected primitives (particles, shadows, markers) line up.
@@ -510,28 +476,6 @@ Fn_ObjectScreenPick_t g_orig_objectScreenPick = nullptr;
 constexpr uintptr_t kNameBoxS2W_A = 0x0083372E;
 constexpr uintptr_t kNameBoxS2W_B = 0x0083390B;
 
-// Call the original screen->world ray with the pixel input shifted by the
-// head-turn offset IFF the input matches the engine cursor globals (= a
-// cursor-driven pick). The engine cursor holds the VISIBLE position; the
-// original FUN_0081B370 expects the CLEAN (extended) coord, so we add the
-// offset back for the duration of the call and restore on return. Non-cursor
-// callers (e.g. the name-box unproject) leave the input alone.
-void CallOrigS2WShifted(int *param_1, float *param_2, float param_3) {
-    const int curX = *reinterpret_cast<int*>(kCursorXAddr);
-    const int curY = *reinterpret_cast<int*>(kCursorYAddr);
-    const int savedX = param_1[0];
-    const int savedY = param_1[1];
-    if (savedX == curX && savedY == curY) {
-        param_1[0] = savedX + static_cast<int>(std::lround(
-            g_cursorBoxOffsetX.load(std::memory_order_acquire)));
-        param_1[1] = savedY + static_cast<int>(std::lround(
-            g_cursorBoxOffsetY.load(std::memory_order_acquire)));
-    }
-    g_orig_s2w(param_1, param_2, param_3);
-    param_1[0] = savedX;
-    param_1[1] = savedY;
-}
-
 void __fastcall Hook_ScreenToWorld(int *param_1, float *param_2, float param_3) {
     const uintptr_t ra = reinterpret_cast<uintptr_t>(_ReturnAddress());
     if ((ra == kNameBoxS2W_A || ra == kNameBoxS2W_B)
@@ -554,19 +498,19 @@ void __fastcall Hook_ScreenToWorld(int *param_1, float *param_2, float param_3) 
         pivot[1] -= g_posEyeShiftWorld[1];
         pivot[2] -= g_posEyeShiftWorld[2];
 
-        CallOrigS2WShifted(param_1, param_2, param_3);
+        g_orig_s2w(param_1, param_2, param_3);
         pivot[0] = savePivot[0]; pivot[1] = savePivot[1]; pivot[2] = savePivot[2];
         CopyViewMatrix(cs, saveCs);
         return;
     }
     if (!g_inSandwich.load(std::memory_order_acquire)) {
-        CallOrigS2WShifted(param_1, param_2, param_3);
+        g_orig_s2w(param_1, param_2, param_3);
         return;
     }
     float* cs = reinterpret_cast<float*>(kCameraStructAddr);
     float saveCs[kViewMatrixFloats];
     StashAndReplaceViewMatrix(cs, g_cleanCameraSave, saveCs);
-    CallOrigS2WShifted(param_1, param_2, param_3);
+    g_orig_s2w(param_1, param_2, param_3);
     CopyViewMatrix(cs, saveCs);
 }
 
@@ -801,11 +745,6 @@ void SetVirtualCursor(bool active, int x, int y) {
         *reinterpret_cast<int*>(kCursorAccumXAddr) = 0;
         *reinterpret_cast<int*>(kCursorAccumYAddr) = 0;
     }
-}
-
-void GetCursorBoxOffset(int& offsetX, int& offsetY) {
-    offsetX = static_cast<int>(std::lround(g_cursorBoxOffsetX.load(std::memory_order_acquire)));
-    offsetY = static_cast<int>(std::lround(g_cursorBoxOffsetY.load(std::memory_order_acquire)));
 }
 
 CameraHook::~CameraHook() { Uninstall(); }

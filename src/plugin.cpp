@@ -68,8 +68,10 @@ bool Plugin::Initialize() {
     m_enabled.store(m_config.enable_on_startup);
     m_worldSpaceYaw.store(m_config.world_space_yaw);
     // The table reads a pair that names no mode as its defaults, so the pair always decodes.
-    m_session.SetMode(
-        cameraunlock::DecodeTrackingMode(m_config.rotation_enabled, m_config.position_enabled).value());
+    const cameraunlock::TrackingMode startMode =
+        cameraunlock::DecodeTrackingMode(m_config.rotation_enabled, m_config.position_enabled).value();
+    m_session.SetMode(startMode);
+    m_desiredMode.store(startMode);
 
     ApplyPositionConfig(m_session.GetPositionProcessor(), m_config);
     // One pair of values for rotation and position alike. The session picks
@@ -102,7 +104,7 @@ bool Plugin::Initialize() {
     HT_LOG("[plugin] initialized - enabled=%d mode=%s yaw=%s "
            "smoothing local=%.2f remote=%.2f | pos scale=%.1f zoomMax=%.2f "
            "limits x=%.2f y=%.2f/%.2f z=%.2f/%.2f | hotkeys toggle=[%s] modeCycle=[%s] yawMode=[%s]",
-           m_enabled.load() ? 1 : 0, TrackingModeName(),
+           m_enabled.load() ? 1 : 0, TrackingModeName(startMode),
            m_worldSpaceYaw.load() ? "world-space" : "camera-local",
            m_config.local_smoothing, m_config.remote_smoothing,
            kWorldUnitsPerMetre, kZoomScaleMax,
@@ -150,16 +152,20 @@ void Plugin::ToggleYawMode() {
 }
 
 void Plugin::CycleTrackingMode() {
-    const cameraunlock::TrackingModeChannels mode = cameraunlock::EncodeTrackingMode(m_session.CycleMode());
-    HT_LOG("[plugin] tracking mode -> %s", TrackingModeName());
+    // Stepped from the mode the camera thread last applied, so two presses
+    // before it next runs are one step, not two.
+    const auto next = static_cast<cameraunlock::TrackingMode>((static_cast<int>(m_session.GetMode()) + 1) % 3);
+    m_desiredMode.store(next);
+    HT_LOG("[plugin] tracking mode -> %s", TrackingModeName(next));
+    const cameraunlock::TrackingModeChannels mode = cameraunlock::EncodeTrackingMode(next);
     LogSave("tracking mode", m_owner->Save([mode](Config& c) {
         c.rotation_enabled = mode.rotation_enabled;
         c.position_enabled = mode.position_enabled;
     }));
 }
 
-const char* Plugin::TrackingModeName() const {
-    switch (m_session.GetMode()) {
+const char* Plugin::TrackingModeName(cameraunlock::TrackingMode mode) {
+    switch (mode) {
         case cameraunlock::TrackingMode::RotationAndPosition: return "6DOF (rotation + position)";
         case cameraunlock::TrackingMode::RotationOnly:        return "rotation only";
         case cameraunlock::TrackingMode::PositionOnly:        return "position only";
@@ -168,6 +174,7 @@ const char* Plugin::TrackingModeName() const {
 }
 
 bool Plugin::GetCurrentRotationRadians(float& yaw, float& pitch, float& roll) {
+    m_session.SetMode(m_desiredMode.load());
     if (!m_enabled.load()) return false;
 
     static bool s_loggedConnected = false;
@@ -193,10 +200,6 @@ bool Plugin::GetCurrentRotationRadians(float& yaw, float& pitch, float& roll) {
     yaw   = yaw_deg   * kDegToRad;
     pitch = pitch_deg * kDegToRad;
     roll  = roll_deg  * kDegToRad;
-    m_cachedYaw.store(yaw,   std::memory_order_release);
-    m_cachedPitch.store(pitch, std::memory_order_release);
-    m_cachedRoll.store(roll,  std::memory_order_release);
-    m_cachedValid.store(true, std::memory_order_release);
 
     // Positional tracking. The session has run the raw head position through
     // the shared pipeline (smooth, clamp); the result is a camera-local
@@ -252,14 +255,6 @@ bool Plugin::GetCurrentRotationRadians(float& yaw, float& pitch, float& roll) {
     } else {
         m_cachedPosValid.store(false, std::memory_order_release);
     }
-    return true;
-}
-
-bool Plugin::GetCachedRotationRadians(float& yaw, float& pitch, float& roll) const {
-    if (!m_cachedValid.load(std::memory_order_acquire)) return false;
-    yaw   = m_cachedYaw.load(std::memory_order_acquire);
-    pitch = m_cachedPitch.load(std::memory_order_acquire);
-    roll  = m_cachedRoll.load(std::memory_order_acquire);
     return true;
 }
 

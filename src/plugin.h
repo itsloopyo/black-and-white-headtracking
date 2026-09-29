@@ -29,19 +29,16 @@ public:
     bool IsWorldSpaceYaw() const { return m_worldSpaceYaw.load(); }
     void ToggleYawMode();
 
+    // Runs on the hotkey thread. The session's mode is applied on the camera
+    // thread, since switching position off resets the position interpolator
+    // and processor that Update() is using.
     void CycleTrackingMode();
-    const char* TrackingModeName() const;
-
+    static const char* TrackingModeName(cameraunlock::TrackingMode mode);
 
     // Pulls the latest UDP packet, runs it through the processor and returns
     // the processed yaw/pitch/roll in radians. Returns false if tracking is
     // disabled or no fresh data has arrived.
     bool GetCurrentRotationRadians(float& yaw, float& pitch, float& roll);
-
-    // Thread-safe read of the most recent rotation produced by
-    // GetCurrentRotationRadians. Does not poll the receiver or touch the
-    // processor; safe to call from any thread (e.g. cursor compensation).
-    bool GetCachedRotationRadians(float& yaw, float& pitch, float& roll) const;
 
     // Camera-local head displacement in engine world units, in view axes
     // (x=right, y=up, z=forward). Updated by GetCurrentRotationRadians; the
@@ -70,6 +67,8 @@ private:
     bool m_remoteConnection = false;
     bool m_remoteConnectionKnown = false;
     std::atomic<bool> m_worldSpaceYaw{true};
+    // The mode the last press asked for, applied by GetCurrentRotationRadians.
+    std::atomic<cameraunlock::TrackingMode> m_desiredMode{cameraunlock::TrackingMode::RotationAndPosition};
 
     cameraunlock::UdpReceiver m_receiver;
     using Session = cameraunlock::HeadTrackingSession<cameraunlock::UdpReceiver>;
@@ -86,15 +85,8 @@ private:
     // The zoom reference (focal distance), locked to the first gameplay zoom seen.
     float m_zoomRef = 0.0f;
 
-    // Cached most-recent rotation, updated at the end of each successful
-    // GetCurrentRotationRadians call. Read by GetCachedRotationRadians.
-    std::atomic<float> m_cachedYaw{0.0f};
-    std::atomic<float> m_cachedPitch{0.0f};
-    std::atomic<float> m_cachedRoll{0.0f};
-    std::atomic<bool>  m_cachedValid{false};
-
     // Cached most-recent camera-local position offset (engine world units),
-    // updated alongside the rotation cache. Read by GetCurrentPositionOffset.
+    // updated by GetCurrentRotationRadians. Read by GetCurrentPositionOffset.
     std::atomic<float> m_cachedPosX{0.0f};
     std::atomic<float> m_cachedPosY{0.0f};
     std::atomic<float> m_cachedPosZ{0.0f};
