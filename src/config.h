@@ -31,8 +31,15 @@ constexpr float kWorldUnitsPerMetre = 40.0f;
 // 2.5.
 constexpr float kZoomScaleMax = 2.5f;
 
+// [Position] CollisionMargin's default, in world units: the radius the game's own camera keeps
+// between its eye and what it collides with (the float at 0x009CE618), so a lean holds the eye
+// off the land exactly as far as the game already does.
+constexpr float kDefaultCollisionMargin = 3.0f;
+
 // Core's config with this game's own rows.
 struct Config : cameraunlock::HeadTrackingConfig {
+    Config() { lean_clamp.skin = kDefaultCollisionMargin; }
+
     // Per-second trace of tracker metres, clamped metres, engine offset and focal distance.
     bool log_position_trace = false;
 };

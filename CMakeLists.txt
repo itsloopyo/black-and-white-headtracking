@@ -59,6 +59,7 @@ add_library(HeadTracking SHARED
     src/config.cpp
     src/legacy_config/legacy_config.cpp
     src/camera_hook.cpp
+    src/lean_trace.cpp
     src/water_surface.cpp
     src/hotkey_handler.cpp
 )

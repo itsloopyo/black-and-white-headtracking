@@ -133,7 +133,7 @@ void TestLegacyDefaultsMapToTheDefaults() {
     Check(result.dropped.empty(), "v0.2.1's defaults drop nothing");
     Check(result.pose_shaping.size() == 18,
           "every sensitivity, inversion, deadzone, the unit scale and its zoom scaling is recorded");
-    Check(result.follows_defaults_ini.size() == 15, "every one of the 15 concept rows follows Defaults.ini");
+    Check(result.follows_defaults_ini.size() == 17, "every one of the 17 global concept rows follows Defaults.ini");
     for (const cfg::PoseShapingValue& value : result.pose_shaping) {
         Check(value.folded, "[" + value.section + "] " + value.key + " at its shipped value is folded");
     }

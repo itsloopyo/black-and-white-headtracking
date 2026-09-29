@@ -4,6 +4,7 @@
 
 ### Added
 
+- Leaning can no longer take the view into the land. The view is held `CollisionMargin` above it (3 units by default, the distance the game's own camera keeps) and out of the areas the game keeps its own camera out of, and eases back when the lean moves away. Buildings, trees and other objects are not tested. The new settings `[Position] CollisionEnabled`, `CollisionMargin` and `CollisionReleaseSmoothing` control it, and `CollisionEnabled=false` turns it off.
 - A setting set to `default` in `CameraUnlock.ini` takes its value from `Defaults.ini`, which every head tracking mod that keeps its settings in `CameraUnlock.ini` reads. Head tracking mods that keep their settings in another file do not read it, and neither do earlier versions of this mod. Writing a value in place of `default` changes that setting for this game only. When the mod saves a setting that a hotkey changed in game, it writes the new value in place of `default`, so that setting no longer follows `Defaults.ini` in this game until you set it to `default` again.
 - `Defaults.ini` is `%AppData%\CameraUnlock\Defaults.ini` on Windows; `$XDG_CONFIG_HOME/CameraUnlock/Defaults.ini` on Linux, or `~/.config/CameraUnlock/Defaults.ini` where `XDG_CONFIG_HOME` is not set, under Wine and Proton too; and `~/Library/Application Support/CameraUnlock/Defaults.ini` on macOS. The mod's log, where it writes one, names the file it read.
 - When the mod starts and finds no `Defaults.ini`, it creates one holding the built-in values, unless Windows runs the game as a packaged app. The mod never changes `Defaults.ini` after that.
@@ -27,6 +28,11 @@
 - The tracking mode that Page Up or Ctrl+Shift+G selects, and the yaw mode that Page Down or Ctrl+Shift+H selects, are now saved to `CameraUnlock.ini` as soon as you change them and come back at the next start. End still changes the current session only.
 - `uninstall.cmd` keeps `CameraUnlock.ini` and `HeadTracking.ini`, so your settings survive a reinstall. Earlier versions deleted `HeadTracking.ini` on uninstall.
 - The installer and Nexus ZIPs no longer carry `HeadTracking.ini`. The mod creates `CameraUnlock.ini` when it first starts.
+
+### Fixed
+
+- Raising your head now raises the view. It lowered it before, and lowering your head raised it.
+- The correction that keeps the cursor on what it points at while your head is turned now uses the game's own projection. Before, it was exact only in camera views whose near clip plane sits 1 unit out, and the game changes that plane between views.
 
 ### Removed
 

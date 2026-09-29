@@ -71,7 +71,6 @@ bool Plugin::Initialize() {
     const cameraunlock::TrackingMode startMode =
         cameraunlock::DecodeTrackingMode(m_config.rotation_enabled, m_config.position_enabled).value();
     m_session.SetMode(startMode);
-    m_desiredMode.store(startMode);
 
     ApplyPositionConfig(m_session.GetPositionProcessor(), m_config);
     // One pair of values for rotation and position alike. The session picks
@@ -90,6 +89,7 @@ bool Plugin::Initialize() {
         HT_LOG("[plugin] UDP port %u busy, receiver will retry in background", port);
     }
 
+    ConfigureLeanClamp(m_config.collision_enabled, m_config.lean_clamp);
     m_cameraHook = std::make_unique<CameraHook>();
     if (!m_cameraHook->Install()) {
         HT_LOG("[plugin] camera hook installation failed");
@@ -103,13 +103,14 @@ bool Plugin::Initialize() {
     // laggy, wrong axis, hotkey does nothing) is answered by these numbers.
     HT_LOG("[plugin] initialized - enabled=%d mode=%s yaw=%s "
            "smoothing local=%.2f remote=%.2f | pos scale=%.1f zoomMax=%.2f "
-           "limits x=%.2f y=%.2f/%.2f z=%.2f/%.2f | hotkeys toggle=[%s] modeCycle=[%s] yawMode=[%s]",
+           "limits x=%.2f y=%.2f/%.2f z=%.2f/%.2f | collision=%d margin=%.2f release=%.2f | hotkeys toggle=[%s] modeCycle=[%s] yawMode=[%s]",
            m_enabled.load() ? 1 : 0, TrackingModeName(startMode),
            m_worldSpaceYaw.load() ? "world-space" : "camera-local",
            m_config.local_smoothing, m_config.remote_smoothing,
            kWorldUnitsPerMetre, kZoomScaleMax,
            m_config.position.limit_x, m_config.position.limit_y, m_config.position.limit_y_down,
            m_config.position.limit_z, m_config.position.limit_z_back,
+           m_config.collision_enabled ? 1 : 0, m_config.lean_clamp.skin, m_config.lean_clamp.release_smoothing,
            m_config.toggle_key_name.c_str(), m_config.cycle_tracking_mode_key_name.c_str(),
            m_config.yaw_mode_key_name.c_str());
     return true;
@@ -152,10 +153,7 @@ void Plugin::ToggleYawMode() {
 }
 
 void Plugin::CycleTrackingMode() {
-    // Stepped from the mode the camera thread last applied, so two presses
-    // before it next runs are one step, not two.
-    const auto next = static_cast<cameraunlock::TrackingMode>((static_cast<int>(m_session.GetMode()) + 1) % 3);
-    m_desiredMode.store(next);
+    const cameraunlock::TrackingMode next = m_session.CycleMode();
     HT_LOG("[plugin] tracking mode -> %s", TrackingModeName(next));
     const cameraunlock::TrackingModeChannels mode = cameraunlock::EncodeTrackingMode(next);
     LogSave("tracking mode", m_owner->Save([mode](Config& c) {
@@ -174,7 +172,6 @@ const char* Plugin::TrackingModeName(cameraunlock::TrackingMode mode) {
 }
 
 bool Plugin::GetCurrentRotationRadians(float& yaw, float& pitch, float& roll) {
-    m_session.SetMode(m_desiredMode.load());
     if (!m_enabled.load()) return false;
 
     static bool s_loggedConnected = false;
@@ -219,10 +216,14 @@ bool Plugin::GetCurrentRotationRadians(float& yaw, float& pitch, float& roll) {
             if (zoom > kZoomScaleMax) zoom = kZoomScaleMax;
             if (zoom < lo) zoom = lo;
         }
+        // The processor's axes are x right, y up and z BACK (negative z is the
+        // forward lean), and B&W's view axes are x right, y up, z forward. z
+        // therefore changes sign here. x does too, as it always has in this mod:
+        // trackers across the fleet deliver x mirrored. y does not.
         const float scale = kWorldUnitsPerMetre * zoom;
-        const float wx = ox * scale;
+        const float wx = -ox * scale;
         const float wy = oy * scale;
-        const float wz = oz * scale;
+        const float wz = -oz * scale;
         m_cachedPosX.store(wx, std::memory_order_release);
         m_cachedPosY.store(wy, std::memory_order_release);
         m_cachedPosZ.store(wz, std::memory_order_release);

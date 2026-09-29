@@ -21,7 +21,9 @@
 #include <cmath>
 
 #include "cameraunlock/hooks/hook_manager.h"
+#include "cameraunlock/time/frame_clock.h"
 #include "engine_addresses.h"
+#include "lean_trace.h"
 #include "water_surface.h"
 #include "plugin.h"
 #include "debug_log.h"
@@ -80,7 +82,9 @@ std::atomic<bool> g_virtualCursorActive{false};
 // The engine's input object: caches the `this` pointer captured by either
 // Hook_InputCursorClamp or Hook_SetCursorPosition so the cage thread can write
 // the unclamped cursor position straight into its mirrors at +0xbc/+0xc4/+0xd0
-// without waiting for the engine to call one of the hooked entry points.
+// without waiting for the engine to call one of the hooked entry points. It is
+// the static at 0x00E85204 (kCursorX/Y are its +0xbc/+0xc0), so the cage thread
+// cannot outlive it.
 std::atomic<uintptr_t> g_inputObject{0};
 
 // Pixel shift the pick orchestrator (FUN_005E42E0) applies to kCursorX/Y before
@@ -97,10 +101,106 @@ std::atomic<float> g_pickShiftX{0.0f};
 std::atomic<float> g_pickShiftY{0.0f};
 
 // World-space eye translation from positional tracking, in the BODY frame
-// (derived from the clean camera basis, so it does not rotate with the head).
-// Written each frame by ApplyHeadRotationToRenderMatrix; the name-box S2W hook
-// shifts g_cameraPivot by this same vector so its unproject matches the render.
+// (derived from the clean camera basis, so it does not rotate with the head):
+// the render eye is g_cameraPivot + this. Written each frame by
+// ApplyHeadRotationToRenderMatrix; the name-box S2W hook shifts g_cameraPivot
+// by this same vector so its unproject matches the render.
 float g_posEyeShiftWorld[3] = {0};
+
+// The lean collision clamp. Game thread only, like everything the camera
+// builders run.
+bool g_leanClampOn = false;
+float g_leanStandoff = 0.0f;
+cameraunlock::camera::LeanClamp g_leanClamp;
+cameraunlock::time::FrameClock g_leanClock;
+cameraunlock::math::Vec3 g_lastLeanEye;
+bool g_haveLastLeanEye = false;
+// A clean eye that moves further than this between two camera builds has cut
+// (a cutscene, a jump to another island), and the allowance from before the cut
+// must not ration the lean after it.
+constexpr float kCameraCutDistance = 200.0f;
+constexpr ULONGLONG kLeanSampleIntervalMs = 10000;
+
+void ResetLeanClamp() {
+    g_leanClamp.Reset();
+    g_haveLastLeanEye = false;
+}
+
+// The component of a world vector along the clean camera's view axis `axis`
+// (0 right, 1 up, 2 forward), which is column `axis` of g_cameraStruct.
+float ViewAxisDot(const cameraunlock::math::Vec3& v, int axis) {
+    const float* clean = reinterpret_cast<const float*>(kCameraStructAddr);
+    return v.x * clean[0 * 3 + axis] + v.y * clean[1 * 3 + axis] + v.z * clean[2 * 3 + axis];
+}
+
+// Contact, a failed query and the near plane taking over the standoff are all
+// invisible in the view, so each transition gets a line, and a periodic sample
+// tells "the query runs and nothing is near" from "the query is not running".
+void LogLeanClamp(const cameraunlock::math::Vec3& eye, const cameraunlock::math::Vec3& wanted,
+                  const cameraunlock::math::Vec3& allowed) {
+    static bool s_contact = false;
+    static bool s_failed = false;
+    static bool s_insideVolume = false;
+    static bool s_nearPlaneRules = false;
+    static ULONGLONG s_lastSample = 0;
+
+    const float clearance = lean_trace::Clearance();
+    const float nearReach = lean_trace::NearPlaneReach();
+
+    const bool failed = g_leanClamp.LastQueryFailed();
+    if (failed != s_failed) {
+        s_failed = failed;
+        HT_LOG("[lean] collision query %s", failed ? "FAILED - the lean is running unclamped" : "working again");
+    }
+    const bool contact = g_leanClamp.InContact();
+    if (contact != s_contact) {
+        s_contact = contact;
+        HT_LOG("[lean] %s (wanted %.2f, allowed %.2f, clearance %.2f)",
+               contact ? "holding the view off the land" : "clear",
+               wanted.Magnitude(), allowed.Magnitude(), clearance);
+    }
+    const bool insideVolume = lean_trace::LastStartedInsideVolume();
+    if (insideVolume != s_insideVolume) {
+        s_insideVolume = insideVolume;
+        HT_LOG("[lean] the game's camera %s a camera volume%s", insideVolume ? "is inside" : "has left",
+               insideVolume ? ", so only the land is tested" : "");
+    }
+    const bool nearPlaneRules = nearReach > g_leanStandoff;
+    if (nearPlaneRules != s_nearPlaneRules) {
+        s_nearPlaneRules = nearPlaneRules;
+        HT_LOG("[lean] clearance %.2f from the %s (near plane reach %.2f, CollisionMargin %.2f)", clearance,
+               nearPlaneRules ? "near plane" : "CollisionMargin", nearReach, g_leanStandoff);
+    }
+    const ULONGLONG now = GetTickCount64();
+    if (now - s_lastSample >= kLeanSampleIntervalMs) {
+        s_lastSample = now;
+        HT_LOG("[lean] sample: wanted %.2f allowed %.2f contact=%d clearance %.2f near %.3f "
+               "eye above land %.2f, leaned eye %.2f, eye moved (%.2f, %.2f, %.2f) along view "
+               "right %.2f up %.2f forward %.2f",
+               wanted.Magnitude(), allowed.Magnitude(), contact ? 1 : 0, clearance,
+               *reinterpret_cast<const float*>(kNearPlaneAddr), lean_trace::HeightAboveLand(eye),
+               lean_trace::HeightAboveLand(eye + allowed), allowed.x, allowed.y, allowed.z,
+               ViewAxisDot(allowed, 0), ViewAxisDot(allowed, 1), ViewAxisDot(allowed, 2));
+    }
+}
+
+// Cuts the world-space eye shift to what the land and the camera volumes leave
+// room for, measured from the clean eye the game built.
+void ClampLeanToWorld(float& wx, float& wy, float& wz) {
+    const float* pivot = reinterpret_cast<const float*>(kCameraPivotAddr);
+    const cameraunlock::math::Vec3 eye(pivot[0], pivot[1], pivot[2]);
+    if (g_haveLastLeanEye && (eye - g_lastLeanEye).Magnitude() > kCameraCutDistance) g_leanClamp.Reset();
+    g_lastLeanEye = eye;
+    g_haveLastLeanEye = true;
+
+    const cameraunlock::math::Vec3 wanted(wx, wy, wz);
+    const cameraunlock::math::Vec3 allowed =
+        g_leanClamp.Apply(eye, wanted, g_leanClock.Tick(), &lean_trace::Query, nullptr);
+    wx = allowed.x;
+    wy = allowed.y;
+    wz = allowed.z;
+    LogLeanClamp(eye, wanted, allowed);
+}
 
 void CopyViewMatrix(float* dst, const float* src) {
     for (int i = 0; i < kViewMatrixFloats; ++i) dst[i] = src[i];
@@ -195,13 +295,16 @@ void ComputePickCursorShift(float yaw_r, float pitch_r, float roll_r) {
         return;
     }
 
-    const float kx = *reinterpret_cast<const float*>(kProjScaleXAddr);
-    const float ky = *reinterpret_cast<const float*>(kProjScaleYAddr);
+    // The render's own projection scale, which the engine keeps equal to
+    // near / near-plane half extent in every camera mode, so the shift lands
+    // where the rendered point does whatever the mode's near plane.
+    const float scaleX = *reinterpret_cast<const float*>(kScaleXAddr);
+    const float scaleY = *reinterpret_cast<const float*>(kScaleYAddr);
     const float halfX = *reinterpret_cast<const float*>(kScreenHalfXAddr);
     const float halfY = *reinterpret_cast<const float*>(kScreenHalfYAddr);
 
-    const float ndc_x =  rx / az / kx;
-    const float ndc_y = -ry / az / ky;
+    const float ndc_x =  rx / az * scaleX;
+    const float ndc_y = -ry / az * scaleY;
 
     // ndc_x is in D3D NDC (X grows rightward, same as pixels) so the screen
     // shift in pixels is ndc_x * halfX directly. ndc_y is in AGENTS.md's
@@ -213,7 +316,23 @@ void ComputePickCursorShift(float yaw_r, float pitch_r, float roll_r) {
     g_pickShiftY.store(-ndc_y * halfY, std::memory_order_release);
 }
 
+// The camera modes rewrite the near plane and the projection with it, and the
+// cursor shift and the lean clearance are both built from those numbers, so a
+// report of either drifting needs them in the log.
+void LogProjectionChange() {
+    static float s_near = -1.0f;
+    const float nearZ = *reinterpret_cast<const float*>(kNearPlaneAddr);
+    if (nearZ == s_near) return;
+    s_near = nearZ;
+    const float kx = *reinterpret_cast<const float*>(kProjScaleXAddr);
+    const float ky = *reinterpret_cast<const float*>(kProjScaleYAddr);
+    HT_LOG("[proj] near %.3f, near plane half extents %.3f x %.3f, render scale %.3f x %.3f",
+           nearZ, kx, ky, *reinterpret_cast<const float*>(kScaleXAddr),
+           *reinterpret_cast<const float*>(kScaleYAddr));
+}
+
 void ApplyHeadRotationToRenderMatrix() {
+    LogProjectionChange();
     float yaw = 0.0f, pitch = 0.0f, roll = 0.0f;
     const bool tracking_active = GetPlugin().GetCurrentRotationRadians(yaw, pitch, roll);
 
@@ -231,6 +350,7 @@ void ApplyHeadRotationToRenderMatrix() {
         // from clean this frame.
         CopyViewMatrix(g_rotatedMatrix, clean);
         g_posEyeShiftWorld[0] = g_posEyeShiftWorld[1] = g_posEyeShiftWorld[2] = 0.0f;
+        ResetLeanClamp();
         return;
     }
 
@@ -291,26 +411,29 @@ void ApplyHeadRotationToRenderMatrix() {
     // the head swings the eye through an arc that adds to the angular motion,
     // so rotation feels amplified. Instead, resolve the view-axis offset into a
     // world vector through the CLEAN (un-head-rotated) basis once, giving a
-    // body-fixed eye shift, then bake it into the rotated translation row as
-    // -eye_shift . rotatedBasis. Head rotation then simply pivots about the
+    // body-fixed eye shift, then bake it into the rotated translation row: the
+    // row is -eye . rotatedBasis, so moving the eye by the shift subtracts
+    // shift . rotatedBasis from it. Head rotation then simply pivots about the
     // leaned eye - rotation speed is identical whether leaning or not.
     // (At neutral head pose this equals the raw view-space offset, so the lean
     // direction is unchanged; it just stops coupling into rotation.)
     float ox = 0.0f, oy = 0.0f, oz = 0.0f;
     if (GetPlugin().GetCurrentPositionOffset(ox, oy, oz)) {
-        const float wx = clean[0] * ox + clean[1] * oy + clean[2] * oz;
-        const float wy = clean[3] * ox + clean[4] * oy + clean[5] * oz;
-        const float wz = clean[6] * ox + clean[7] * oy + clean[8] * oz;
+        float wx = clean[0] * ox + clean[1] * oy + clean[2] * oz;
+        float wy = clean[3] * ox + clean[4] * oy + clean[5] * oz;
+        float wz = clean[6] * ox + clean[7] * oy + clean[8] * oz;
+        if (g_leanClampOn) ClampLeanToWorld(wx, wy, wz);
         g_posEyeShiftWorld[0] = wx;
         g_posEyeShiftWorld[1] = wy;
         g_posEyeShiftWorld[2] = wz;
         for (int j = 0; j < 3; ++j) {
-            rotated[3 * 3 + j] += wx * rotated[0 * 3 + j]
+            rotated[3 * 3 + j] -= wx * rotated[0 * 3 + j]
                                 + wy * rotated[1 * 3 + j]
                                 + wz * rotated[2 * 3 + j];
         }
     } else {
         g_posEyeShiftWorld[0] = g_posEyeShiftWorld[1] = g_posEyeShiftWorld[2] = 0.0f;
+        ResetLeanClamp();
     }
 
     // Baseline (Option A): write both render-side matrices identically.
@@ -492,11 +615,11 @@ void __fastcall Hook_ScreenToWorld(int *param_1, float *param_2, float param_3) 
         // invisible here: the box would anchor to the un-shifted eye while the
         // unit, rendered through the shifted view, has moved -> the box drifts
         // off the name by the lean amount. The render moved the eye to
-        // eye - g_posEyeShiftWorld (body frame), so shift g_cameraPivot by the
+        // eye + g_posEyeShiftWorld (body frame), so shift g_cameraPivot by the
         // same vector and the unproject lands back on the unit.
-        pivot[0] -= g_posEyeShiftWorld[0];
-        pivot[1] -= g_posEyeShiftWorld[1];
-        pivot[2] -= g_posEyeShiftWorld[2];
+        pivot[0] += g_posEyeShiftWorld[0];
+        pivot[1] += g_posEyeShiftWorld[1];
+        pivot[2] += g_posEyeShiftWorld[2];
 
         g_orig_s2w(param_1, param_2, param_3);
         pivot[0] = savePivot[0]; pivot[1] = savePivot[1]; pivot[2] = savePivot[2];
@@ -714,6 +837,18 @@ bool InstallOneHook(uintptr_t addr, void* detour, void** outOriginal, const char
 }  // namespace
 
 float GetFocalDistance() { return g_focalDistance.load(std::memory_order_acquire); }
+
+void ConfigureLeanClamp(bool enabled, const cameraunlock::camera::LeanClampSettings& settings) {
+    g_leanClampOn = enabled;
+    g_leanStandoff = settings.skin;
+    lean_trace::SetStandoff(settings.skin);
+    cameraunlock::camera::LeanClampSettings clamp = settings;
+    // The query holds the eye clear of the land itself, and the camera volumes
+    // arrive widened by the camera radius, so a skin here would hold it back twice.
+    clamp.skin = 0.0f;
+    g_leanClamp.SetSettings(clamp);
+    ResetLeanClamp();
+}
 void SetVirtualCursor(bool active, int x, int y) {
     g_virtualCursorX.store(x, std::memory_order_release);
     g_virtualCursorY.store(y, std::memory_order_release);

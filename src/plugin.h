@@ -29,9 +29,6 @@ public:
     bool IsWorldSpaceYaw() const { return m_worldSpaceYaw.load(); }
     void ToggleYawMode();
 
-    // Runs on the hotkey thread. The session's mode is applied on the camera
-    // thread, since switching position off resets the position interpolator
-    // and processor that Update() is using.
     void CycleTrackingMode();
     static const char* TrackingModeName(cameraunlock::TrackingMode mode);
 
@@ -40,9 +37,9 @@ public:
     // disabled or no fresh data has arrived.
     bool GetCurrentRotationRadians(float& yaw, float& pitch, float& roll);
 
-    // Camera-local head displacement in engine world units, in view axes
-    // (x=right, y=up, z=forward). Updated by GetCurrentRotationRadians; the
-    // camera hook adds this to the render matrix as the final camera shift.
+    // How far the lean moves the eye, in engine world units along the clean
+    // camera's view axes (x right, y up, z forward). Updated by
+    // GetCurrentRotationRadians; the camera hook moves the render eye by it.
     // Returns false when positional tracking is off or no fresh sample exists.
     bool GetCurrentPositionOffset(float& x, float& y, float& z) const;
 
@@ -67,8 +64,6 @@ private:
     bool m_remoteConnection = false;
     bool m_remoteConnectionKnown = false;
     std::atomic<bool> m_worldSpaceYaw{true};
-    // The mode the last press asked for, applied by GetCurrentRotationRadians.
-    std::atomic<cameraunlock::TrackingMode> m_desiredMode{cameraunlock::TrackingMode::RotationAndPosition};
 
     cameraunlock::UdpReceiver m_receiver;
     using Session = cameraunlock::HeadTrackingSession<cameraunlock::UdpReceiver>;

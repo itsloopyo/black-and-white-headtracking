@@ -1,5 +1,7 @@
 #pragma once
 
+#include "cameraunlock/camera/lean_clamp.h"
+
 namespace headtracking {
 
 // Installs MinHook detours on the engine's camera-matrix builders and
@@ -21,6 +23,10 @@ public:
 // first camera build. Used to scale positional tracking so the on-screen
 // effect is constant across zoom.
 float GetFocalDistance();
+
+// Call before Install. `settings.skin` is CollisionMargin, the height the eye is
+// held above the land; see lean_trace.h.
+void ConfigureLeanClamp(bool enabled, const cameraunlock::camera::LeanClampSettings& settings);
 
 void SetVirtualCursor(bool active, int x, int y);
 

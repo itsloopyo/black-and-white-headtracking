@@ -569,22 +569,25 @@ bool OutOfKeyRange(int vk) { return vk != 0 && (vk < 0x01 || vk > 0xFE); }
 
 using cfg::schema::Concept;
 
-// Every row the table binds, each of which follows Defaults.ini.
+// Every row the table binds that follows Defaults.ini: all but CollisionMargin, which is not a
+// global concept.
 const std::set<Concept>& AllRows() {
     static const std::set<Concept> all = {
         Concept::UdpPort,        Concept::EnableOnStartup,    Concept::WorldSpaceYaw,   Concept::RotationEnabled,
         Concept::LocalSmoothing, Concept::RemoteSmoothing,    Concept::PositionEnabled, Concept::PositionLimitX,
         Concept::PositionLimitY, Concept::PositionLimitYDown, Concept::PositionLimitZ,  Concept::PositionLimitZBack,
+        Concept::CollisionEnabled, Concept::CollisionReleaseSmoothing,
         Concept::ToggleKey,      Concept::CycleTrackingModeKey, Concept::YawModeKey,
     };
     return all;
 }
 
 // The rows the player never changed: each reads as v0.2.1 ran on with no file. One LimitY gave
-// both vertical rows, and [Position] Enabled gave the mode pair.
+// both vertical rows, and [Position] Enabled gave the mode pair. No legacy build had the collision
+// rows, so no player changed them.
 std::set<Concept> UntouchedRows(const legacy::Config& l) {
     const legacy::Config d;
-    std::set<Concept> u;
+    std::set<Concept> u = {Concept::CollisionEnabled, Concept::CollisionReleaseSmoothing};
     const auto row = [&u](bool same, std::initializer_list<Concept> ids) {
         if (same) u.insert(ids.begin(), ids.end());
     };

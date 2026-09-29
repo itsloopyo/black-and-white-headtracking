@@ -145,7 +145,7 @@ Apart from creating `CameraUnlock.ini` at startup when there is none, the mod wr
 <!-- cameraunlock:config -->
 The mod reads its settings from `CameraUnlock.ini` in the game folder, and creates the file when it starts and finds none. Edit it with any text editor.
 
-A setting set to `default` takes its value from `Defaults.ini`, which every head tracking mod that keeps its settings in `CameraUnlock.ini` reads. Head tracking mods that keep their settings in another file do not read it. Writing a value in place of `default` changes that setting for this game only. When the mod saves a setting that a hotkey changed in game, it writes the new value in place of `default`, so that setting no longer follows `Defaults.ini` in this game until you set it to `default` again.
+A setting set to `default` takes its value from `Defaults.ini`, which every head tracking mod that keeps its settings in `CameraUnlock.ini` reads. Head tracking mods that keep their settings in another file do not read it. Changing a setting in `Defaults.ini` changes it in every game that has it set to `default`. Writing a value in place of `default` changes that setting for this game only. When the mod saves a setting that a hotkey changed in game, it writes the new value in place of `default`, so that setting no longer follows `Defaults.ini` in this game until you set it to `default` again.
 
 `Defaults.ini` is `%AppData%\CameraUnlock\Defaults.ini` on Windows; `$XDG_CONFIG_HOME/CameraUnlock/Defaults.ini` on Linux, or `~/.config/CameraUnlock/Defaults.ini` where `XDG_CONFIG_HOME` is not set, under Wine and Proton too; and `~/Library/Application Support/CameraUnlock/Defaults.ini` on macOS. The mod's log, where it writes one, names the file it read.
 
@@ -165,6 +165,8 @@ The built-in value of each setting set to `default` below:
 - `PositionLimitYDown=0.2`
 - `PositionLimitZ=0.4`
 - `PositionLimitZBack=0.1`
+- `CollisionEnabled=true`
+- `CollisionReleaseSmoothing=0.9`
 - `ToggleKey=End, Ctrl+Shift+Y`
 - `CycleTrackingModeKey=PageUp, Ctrl+Shift+G`
 - `YawModeKey=PageDown, Ctrl+Shift+H`
@@ -179,8 +181,9 @@ With every setting at its default, the file reads:
 ; that keeps its settings in CameraUnlock.ini reads: %AppData%\CameraUnlock\Defaults.ini on
 ; Windows, $XDG_CONFIG_HOME/CameraUnlock/Defaults.ini (normally ~/.config/CameraUnlock) on
 ; Linux, under Wine and Proton too, and ~/Library/Application Support/CameraUnlock/Defaults.ini
-; on macOS. The log names the file it read. Write a value instead of default to change that
-; setting for this game only.
+; on macOS. The log names the file it read. Change a setting in Defaults.ini to change it in
+; every game that has it set to default, or write a value here instead of default to change it
+; for this game only.
 
 [CameraUnlock]
 ; Written by the mod. Leave this section in place.
@@ -220,6 +223,16 @@ PositionLimitYDown=default
 PositionLimitZ=default
 ; How far, in metres, leaning back can move the view.
 PositionLimitZBack=default
+; true: leaning stops at walls instead of moving the view through them.
+; Only games whose mod sweeps the level for walls read this; the rest ignore it.
+CollisionEnabled=default
+; How far above the land the view is held when you lean towards it, in the game's own units.
+; 3 is the distance the game's own camera keeps. The mod never holds it closer than the
+; camera's near clip plane reaches, which it reads from the game.
+CollisionMargin=3.0
+; How gently the view eases back out after a wall stopped a lean.
+; 0 is the quickest, 1 the slowest.
+CollisionReleaseSmoothing=default
 
 [Hotkeys]
 ; Turns head tracking on and off.
@@ -265,6 +278,12 @@ There are no sensitivity, inversion, deadzone or scale settings: the mod applies
 - If an axis moves the view the wrong way, invert it in your tracker.
 - Press `Page Up` (or `Ctrl+Shift+G`) to switch to rotation only. The mod saves the mode and starts in it next time.
 - Position is applied last, as a camera-local shift (relative to where you're looking).
+
+**A lean stops short near the ground**
+
+- Leaning cannot take the view into the land. The mod holds the view `CollisionMargin` above the land (3 units by default, the distance the game's own camera keeps), and out of the areas the game keeps its own camera out of. Where the game's camera draws with a deeper near clip plane it holds the view further off, since land any closer than that is not drawn.
+- Buildings, trees and other objects are not tested, so a lean can still take the view into them.
+- `[Position] CollisionEnabled=false` in `CameraUnlock.ini` turns this off. The log says each time a lean is held off the land.
 
 **Yaw feels wrong at extreme pitch**
 

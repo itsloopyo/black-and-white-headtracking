@@ -122,6 +122,8 @@ ImportResult Import(const LegacyInput& input, Config& out) {
     follows.Setting(Concept::ToggleKey, c.toggle_vk, shipped.toggle_vk);
     follows.Setting(Concept::CycleTrackingModeKey, c.mode_cycle_vk, shipped.mode_cycle_vk);
     follows.Setting(Concept::YawModeKey, c.yaw_mode_vk, shipped.yaw_mode_vk);
+    follows.NotInLegacy(Concept::CollisionEnabled);
+    follows.NotInLegacy(Concept::CollisionReleaseSmoothing);
 
     return read == legacy::ReadStatus::Absent
                ? ImportResult::Absent(std::move(dropped), std::move(shaping), follows.Concepts())
@@ -135,7 +137,12 @@ cameraunlock::config::ConfigTable<Config> MakeConfigTable() {
         {Concept::UdpPort, Concept::EnableOnStartup, Concept::WorldSpaceYaw, Concept::RotationEnabled,
          Concept::LocalSmoothing, Concept::RemoteSmoothing, Concept::PositionEnabled, Concept::PositionLimitX,
          Concept::PositionLimitY, Concept::PositionLimitYDown, Concept::PositionLimitZ, Concept::PositionLimitZBack,
+         Concept::CollisionEnabled, Concept::CollisionMargin, Concept::CollisionReleaseSmoothing,
          Concept::ToggleKey, Concept::CycleTrackingModeKey, Concept::YawModeKey});
+    table.Select(Concept::CollisionMargin)
+        .Comment("How far above the land the view is held when you lean towards it, in the game's own units.\n"
+                 "3 is the distance the game's own camera keeps. The mod never holds it closer than the\n"
+                 "camera's near clip plane reaches, which it reads from the game.");
     table.Select(Concept::WorldSpaceYaw).Writable()
         .Select(Concept::RotationEnabled).Writable()
         .Select(Concept::PositionEnabled).Writable();

@@ -33,8 +33,8 @@ constexpr uintptr_t kCameraStructAddr = 0x00EA1D28;  // float[12], 4x3 clean vie
 constexpr uintptr_t kCameraPivotAddr  = 0x00EA1DB8;  // float[3], eye in world (B&W is Y-up)
 constexpr uintptr_t kScaledMatrixAddr = 0x00EA9E40;  // float[12], projection-scaled mirror
 constexpr uintptr_t kMirrorMatrixAddr = 0x00EA1D58;  // float[12], byte copy of scaled
-constexpr uintptr_t kScaleXAddr       = 0x00E83A00;  // float, X projection scale ~ tan(FOV/2)
-constexpr uintptr_t kScaleYAddr       = 0x00E83A04;  // float, Y projection scale
+constexpr uintptr_t kScaleXAddr       = 0x00E83A00;  // float, X projection scale, 1 / tan(fovX/2)
+constexpr uintptr_t kScaleYAddr       = 0x00E83A04;  // float, Y projection scale, 1 / tan(fovY/2)
 constexpr uintptr_t kShadowMatrixAddr = 0x00EA9DE0;  // inverse of g_scaledMatrix (shadow projector)
 constexpr uintptr_t kCursorXAddr      = 0x00E852C0;  // current game cursor X, client pixels
 constexpr uintptr_t kCursorYAddr      = 0x00E852C4;  // current game cursor Y, client pixels
@@ -58,13 +58,36 @@ constexpr uintptr_t kCursorAccumXAddr   = 0x00D37CB0;   // ±20-clamped cumulati
 constexpr uintptr_t kCursorAccumYAddr   = 0x00D37CB4;
 
 // FUN_0081B370 pixel<->ray constants. For pixel p the engine forms a view-space
-// ray ((p.x-halfX)*scaleX/halfX, (halfY-p.y)*scaleY/halfY, fwd) then rotates it
+// ray ((p.x-halfX)*scaleX/halfX, (halfY-p.y)*scaleY/halfY, near) then rotates it
 // by g_cameraStruct. Inverting that projects the head-rotated forward axis back
 // into clean-camera cursor pixels, which is the pick orchestrator's cursor shift.
+//
+// The near plane is the depth the vertex transform (FUN_00850FC0) sets clip flag
+// 0x20 below. The camera modes rewrite it (0.1 in FUN_00460F10, 3.5 at init,
+// computed in FUN_00441F80), and FUN_00460F10 writes the two ray scales as
+// tan(fov/2) * near, so they are the near plane's half width and half height.
+constexpr uintptr_t kNearPlaneAddr    = 0x00E839E0;  // float, near clip depth, world units
 constexpr uintptr_t kScreenHalfXAddr  = 0x00E839F0;  // float, screen centre X (half width), px
 constexpr uintptr_t kScreenHalfYAddr  = 0x00E839F4;  // float, screen centre Y (half height), px
-constexpr uintptr_t kProjScaleXAddr   = 0x00C3812C;  // float, horizontal ray scale (~tan(fovH/2))
-constexpr uintptr_t kProjScaleYAddr   = 0x00C38130;  // float, vertical ray scale (~tan(fovV/2))
+constexpr uintptr_t kProjScaleXAddr   = 0x00C3812C;  // float, near plane half width
+constexpr uintptr_t kProjScaleYAddr   = 0x00C38130;  // float, near plane half height
+
+// The landscape and camera collision the game's own camera obeys (Camera.cpp,
+// FUN_0045A960). Its ground test FUN_00459C30 reads the land height with
+// FUN_00803090 and raises it over the camera volumes; FUN_00455D50 is the same
+// volume list as a point test.
+//
+// float __fastcall(const int32_t* mapXZ): land height at a map position. The map
+// is 512x512 cells of 10 world units, and a position is 16.16 fixed point in
+// cells (world * 0.1 * 65536, truncated, as FUN_00459BE0 builds it). Off the map
+// it answers 0, which is sea level.
+constexpr uintptr_t kFn_LandHeight_Addr = 0x00803090;
+constexpr float kMapFixedPerWorldUnit   = 0.1f * 65536.0f;
+// bool __cdecl(float x, float y, float z): true inside any registered camera
+// volume (the list at 0x00C5E160), each widened by the camera radius (3.0, the
+// read-only float at 0x009CE618). The camera modes register them; a volume is an
+// ellipsoid or a vertical cylinder.
+constexpr uintptr_t kFn_InCameraVolume_Addr = 0x00455D50;
 
 // void __fastcall(float* out, float* in): out = inverse(in).
 constexpr uintptr_t kFn_Invert_Addr   = 0x007FB290;
